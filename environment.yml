@@ -1,0 +1,23 @@
+name: fanoseq
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - pyarrow
+  - scipy
+  - scikit-learn
+  - biopython
+  - pyfastx
+  - scikit-bio
+  - numba
+  - typer
+  - rich
+  - pytest
+  - ruff
+  - mypy
+  - pip
+  - pip:
+      - build
+      - twine
