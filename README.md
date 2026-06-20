@@ -46,7 +46,7 @@ These products, commutators, and associators are mathematical descriptors of loc
 
 ## Fano Plane Convention
 
-FanoSeq uses this oriented Fano-plane convention: (1,2,3), (1,4,5), (1,6,7), (2,4,6), (2,5,7), (3,4,7), and (3,5,6).
+FanoSeq uses this oriented Fano-plane convention: (1,2,3), (1,4,5), (1,7,6), (2,4,6), (2,5,7), (3,4,7), and (3,6,5).
 
 For each oriented triple (a,b,c), the cyclic products are positive: eₐeᵦ = e_c, eᵦe_c = eₐ, and e_c eₐ = eᵦ. Reversing the order changes the sign: eᵦeₐ = −e_c, e_c eᵦ = −eₐ, and eₐe_c = −eᵦ.
 
@@ -117,6 +117,18 @@ FanoSeq currently contributes a practical extraction engine: FASTA input → win
 
 Useful next steps toward the research directions in the background document include adding benchmark datasets, downstream machine-learning examples, multi-track genomic input, protein-geometry input, and optional octonion-aware neural layers.
 
+## Scientific Positioning
+
+FanoSeq follows an evidence-maturity model:
+
+| evidence layer | external maturity | FanoSeq role | repo policy |
+| --- | --- | --- | --- |
+| Octonion and Fano-plane mathematics | very strong | core algebra, kernels, invariants, validation | must be validated with exact basis tests |
+| Hypercomplex computation and ML | moderate to strong | optional representations, tensor exports, future parameter-efficient layers | experimental modules must be compared with real-valued baselines |
+| Direct octonion bioinformatics | sparse and exploratory | hypothesis-generating descriptors and candidate applications | no biological usefulness claims without public benchmark evidence |
+
+The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md` and `docs/implementation_roadmap.md`.
+
 ## Application Map
 
 FanoSeq now separates implemented tooling from research directions that still require validation.
@@ -138,14 +150,16 @@ The first supported downstream workflow is: run FanoSeq, inspect compact fingerp
 
 FanoSeq includes a small registry of concrete encodings:
 
-| encoding | purpose |
-| --- | --- |
-| dna-base-context | 8-channel base plus previous-base context |
-| gf8-base | sparse base encoding with base axis plus RY/SW/MK chemistry |
-| octonion-walk | left-associated product over DNA k-mers |
-| codon-embedding-init | 64×8 codon embedding table initialized from root chemistry, wobble chemistry, stop/sense state, and degeneracy |
-| protein-groups | residue-level 8-group physicochemical encoding |
-| multi-track | pack up to eight synchronized genomic or omics tracks into octonion components |
+| encoding | representation | purpose |
+| --- | --- | --- |
+| dna-base-context | eight-channel-tensor | 8-channel base plus previous-base context |
+| gf8-base | algebraic-octonion | sparse base encoding with base axis plus RY/SW/MK chemistry |
+| octonion-walk | algebraic-octonion | left-associated product over DNA k-mers |
+| codon-embedding-init | eight-channel-tensor | 64×8 codon embedding table initialized from root chemistry, wobble chemistry, stop/sense state, and degeneracy |
+| protein-groups | eight-channel-tensor | residue-level 8-group physicochemical encoding |
+| multi-track | eight-channel-tensor | pack up to eight synchronized genomic or omics tracks into octonion components |
+
+An `algebraic-octonion` encoding uses e0 as the scalar axis and e1...e7 as imaginary axes under the Fano convention. An `eight-channel-tensor` is an 8D feature representation for ML or export; it should not be treated as biologically meaningful octonion multiplication without explicit justification.
 
 List the registry:
 
@@ -229,6 +243,18 @@ DNA window mode:
 
 ```bash
 fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 10 --step 1 --output-dir results/example_dna_windows
+```
+
+Validate the octonion basis convention:
+
+```bash
+fanoseq validate-basis --output-dir results/basis_validation
+```
+
+Generate baseline comparator features:
+
+```bash
+fanoseq baselines --input examples/example_dna.fasta --seq-type dna --kmer-k 4 --frame all --output-dir results/example_dna_baselines
 ```
 
 Protein window mode:
@@ -332,6 +358,10 @@ The manifest stores schema version, input hash, run configuration, output table 
 `window_sequence_summary.tsv` or `.parquet` contains compact per-sequence fingerprints for window-mode runs. This is the main output retained by `--summary-only` for window analysis.
 
 `sequence_fingerprints.tsv` or `.parquet` merges available window and codon summaries into one downstream feature table per sequence. Use it for quick clustering, nearest-neighbor search, anomaly detection, or model baselines.
+
+`basis_validation.tsv` reports exact algebra checks for the FanoSeq basis convention. `basis_multiplication_table.tsv` lists every e_i e_j product, and `structure_constants.tsv` gives nonzero A[i,j,k] coefficients for tensor/layer implementations.
+
+`baseline_sequence_features.tsv`, `baseline_kmer_frequencies.tsv`, `baseline_kmer_feature_matrix.tsv`, and `baseline_codon_usage.tsv` provide mature comparator features for DNA benchmark studies. Protein baseline runs write sequence, residue-composition, and amino-acid k-mer tables.
 
 `window_octonions.tsv` or `.parquet` contains one row per sequence window with auxiliary descriptors and `e0...e7` components.
 
@@ -452,10 +482,14 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 
 ## Development Roadmap
 
-- Add plotting
-- Add PCA/UMAP of window octonions
+- Add benchmark harness driven by manifest files
+- Add curated coding/noncoding or taxonomy benchmark examples
+- Add true FCGR image/tensor export
+- Add iCGR-style compact integer signatures
 - Add benchmarks against k-mer features
 - Add benchmarks against codon-usage features
+- Add plotting
+- Add PCA/UMAP of window octonions
 - Add learned octonion filters
 - Add configurable axis definitions
 - Add JSON/YAML config files

@@ -11,11 +11,11 @@ from numpy.typing import NDArray
 FANO_LINES: tuple[tuple[int, int, int], ...] = (
     (1, 2, 3),
     (1, 4, 5),
-    (1, 6, 7),
+    (1, 7, 6),
     (2, 4, 6),
     (2, 5, 7),
     (3, 4, 7),
-    (3, 5, 6),
+    (3, 6, 5),
 )
 
 
@@ -126,4 +126,3 @@ class Octonion:
     def associator(self, y: Self, z: Self) -> Self:
         """Return [self, y, z] = (self * y) * z - self * (y * z)."""
         return (self * y) * z - self * (y * z)
-

@@ -16,6 +16,9 @@ def test_encoding_registry_lists_core_encodings() -> None:
     assert {"dna-base-context", "gf8-base", "octonion-walk", "codon-embedding-init"}.issubset(
         set(specs["name"])
     )
+    assert "representation" in specs.columns
+    walk = specs[specs["name"] == "octonion-walk"].iloc[0]
+    assert walk["representation"] == "algebraic-octonion"
 
 
 def test_dna_base_context_uses_current_and_previous_base_channels() -> None:

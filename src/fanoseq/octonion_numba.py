@@ -27,11 +27,11 @@ def _basis_product(left: int, right: int) -> tuple[int, int]:
     triples = (
         (1, 2, 3),
         (1, 4, 5),
-        (1, 6, 7),
+        (1, 7, 6),
         (2, 4, 6),
         (2, 5, 7),
         (3, 4, 7),
-        (3, 5, 6),
+        (3, 6, 5),
     )
     for a, b, c in triples:
         if (left == a and right == b) or (left == b and right == c) or (
@@ -122,4 +122,3 @@ def batch_triplet_associator_scores(values: NDArray[np.float64]) -> NDArray[np.f
             total += assoc[j] * assoc[j]
         out[i] = np.sqrt(total)
     return out
-

@@ -44,6 +44,7 @@ class EncodingSpec:
 
     name: str
     domain: str
+    representation: str
     description: str
     output_shape: str
     implemented: bool = True
@@ -53,36 +54,42 @@ ENCODING_REGISTRY: dict[str, EncodingSpec] = {
     "dna-base-context": EncodingSpec(
         name="dna-base-context",
         domain="dna",
+        representation="eight-channel-tensor",
         description="8-channel base plus previous-base context encoding.",
         output_shape="one octonion per base",
     ),
     "gf8-base": EncodingSpec(
         name="gf8-base",
         domain="dna",
+        representation="algebraic-octonion",
         description="Sparse base encoding using imaginary axes and binary chemistry classes.",
         output_shape="one octonion per base",
     ),
     "octonion-walk": EncodingSpec(
         name="octonion-walk",
         domain="dna",
+        representation="algebraic-octonion",
         description="Order-sensitive left-associated octonion product over DNA k-mers.",
         output_shape="one octonion per k-mer",
     ),
     "codon-embedding-init": EncodingSpec(
         name="codon-embedding-init",
         domain="dna",
+        representation="eight-channel-tensor",
         description="64x8 codon table initialized from root chemistry, wobble, and degeneracy.",
         output_shape="64 codons x 8 components",
     ),
     "protein-groups": EncodingSpec(
         name="protein-groups",
         domain="protein",
+        representation="eight-channel-tensor",
         description="Residue-level 8-group physicochemical octonion encoding.",
         output_shape="one octonion per residue",
     ),
     "multi-track": EncodingSpec(
         name="multi-track",
         domain="genomics",
+        representation="eight-channel-tensor",
         description="Assign up to eight synchronized numeric tracks to octonion components.",
         output_shape="one octonion per genomic bin",
     ),

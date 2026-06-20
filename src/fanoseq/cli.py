@@ -5,10 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import typer
 from rich.console import Console
 
+from fanoseq.algebra import (
+    multiplication_table,
+    structure_constants,
+    validation_passed,
+    validation_report,
+)
+from fanoseq.baselines import build_baseline_tables
 from fanoseq.distances import build_distance_matrix, build_neighbor_table
 from fanoseq.encodings import (
     build_codon_embedding_initialization,
@@ -125,6 +133,106 @@ def list_encodings() -> None:
     """List implemented octonion encoding schemes."""
     table = list_encoding_specs()
     console.print(table.to_string(index=False))
+
+
+@app.command("validate-basis")
+def validate_basis(
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output-dir", help="Optional directory for validation tables."
+    ),
+    output_format: str = typer.Option(
+        "tsv", "--output-format", help="Output storage format when --output-dir is supplied."
+    ),
+) -> None:
+    """Validate the FanoSeq octonion basis convention and algebra representations."""
+    try:
+        report = validation_report()
+        passed = validation_passed(report)
+        if output_dir is not None:
+            constants = structure_constants()
+            nonzero = np.argwhere(constants != 0.0)
+            structure_rows = [
+                {
+                    "left": int(left),
+                    "right": int(right),
+                    "basis": int(basis),
+                    "coefficient": float(constants[left, right, basis]),
+                }
+                for left, right, basis in nonzero
+            ]
+            written = write_outputs(
+                {
+                    "basis_validation": report,
+                    "basis_multiplication_table": multiplication_table(),
+                    "structure_constants": pd.DataFrame(structure_rows),
+                },
+                output_dir,
+                output_format.lower(),  # type: ignore[arg-type]
+                manifest={
+                    "format": "fanoseq-basis-validation",
+                    "schema_version": "0.4.0",
+                    "passed": passed,
+                },
+            )
+            console.print(
+                f"[green]FanoSeq wrote {len(written)} basis validation table(s) to {output_dir}[/green]"
+            )
+        failed = report[~report["passed"]]
+        if passed:
+            console.print(f"[green]Basis validation passed ({len(report)} checks).[/green]")
+        else:
+            console.print(f"[red]Basis validation failed ({len(failed)} failing checks).[/red]")
+            console.print(failed.to_string(index=False))
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("baselines")
+def baselines(
+    input_path: Path = typer.Option(..., "--input", "-i", help="Path to DNA or protein FASTA file."),
+    seq_type: str = typer.Option(..., "--seq-type", help="Either 'dna' or 'protein'."),
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for baseline tables."),
+    kmer_k: int = typer.Option(4, "--kmer-k", help="k for k-mer baseline features."),
+    frame: str = typer.Option("0", "--frame", help="DNA reading frame: 0, 1, 2, or all."),
+    codon_table: str = typer.Option("standard", "--codon-table", help="Codon table name or ID."),
+    output_format: str = typer.Option(
+        "tsv", "--output-format", help="Output storage format: tsv, parquet, or bundle."
+    ),
+) -> None:
+    """Write mature baseline features for benchmark comparisons."""
+    try:
+        seq_type_normalized = seq_type.lower()
+        parsed_frame: int | str = "all" if frame == "all" else int(frame)
+        genetic_code = get_genetic_code(codon_table) if seq_type_normalized == "dna" else None
+        tables = build_baseline_tables(
+            read_fasta(input_path),
+            seq_type=seq_type_normalized,  # type: ignore[arg-type]
+            kmer_k=kmer_k,
+            genetic_code=genetic_code,
+            frame=parsed_frame,  # type: ignore[arg-type]
+        )
+        written = write_outputs(
+            tables,
+            output_dir,
+            output_format.lower(),  # type: ignore[arg-type]
+            manifest={
+                "format": "fanoseq-baselines",
+                "input_path": str(input_path),
+                "seq_type": seq_type_normalized,
+                "kmer_k": kmer_k,
+                "frame": parsed_frame,
+                "codon_table": codon_table if seq_type_normalized == "dna" else "NA",
+                "schema_version": "0.4.0",
+            },
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]FanoSeq wrote {len(written)} baseline table(s) to {output_dir}[/green]")
 
 
 @app.command("matrix-genetics")
