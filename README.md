@@ -173,6 +173,8 @@ pip install -e .
 pytest
 ```
 
+The conda environment pins Python 3.11 for reproducible package resolution. The package itself supports Python 3.10 and newer. On Windows, `pyfastx` is installed through the `pip:` section of `environment.yml` because the conda package is not available for `win-64` on the standard channels used here.
+
 Using mamba:
 
 ```bash
