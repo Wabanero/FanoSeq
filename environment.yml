@@ -8,9 +8,22 @@ dependencies:
   - pyarrow
   - scipy
   - scikit-learn
+  - statsmodels
   - biopython
   - scikit-bio
   - numba
+  - duckdb
+  - polars
+  - zarr
+  - h5py
+  - networkx
+  - matplotlib
+  - seaborn
+  - umap-learn
+  - pyyaml
+  - tqdm
+  - jupyterlab
+  - ipykernel
   - typer
   - rich
   - pytest

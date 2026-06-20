@@ -26,6 +26,20 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy", "build", "twine"]
+downstream = [
+    "duckdb",
+    "polars",
+    "zarr",
+    "h5py",
+    "networkx",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "umap-learn",
+    "pyyaml",
+    "tqdm",
+]
+ml = ["torch"]
 
 [project.scripts]
 fanoseq = "fanoseq.cli:app"

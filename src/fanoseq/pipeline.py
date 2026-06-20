@@ -15,6 +15,7 @@ from fanoseq.codon_features import codon_entropy, encode_codon, iter_codons
 from fanoseq.dna_features import encode_dna_window
 from fanoseq.fano_attribution import fano_line_attribution
 from fanoseq.fasta import read_fasta
+from fanoseq.fingerprints import build_sequence_fingerprints
 from fanoseq.genetic_code import GeneticCode, all_standard_codons, get_genetic_code
 from fanoseq.io import OutputFormat, write_outputs
 from fanoseq.octonion import Octonion
@@ -24,7 +25,7 @@ from fanoseq.windows import iter_windows
 SeqType = Literal["dna", "protein"]
 Mode = Literal["window", "codon", "both"]
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 
 WINDOW_COLUMNS = [
     "sequence_id",
@@ -265,11 +266,17 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
             fano_rows.extend(codon_fano)
 
     fano_df = pd.DataFrame(fano_rows)
+    if not fano_df.empty and "frame" in fano_df.columns:
+        fano_df["frame"] = fano_df["frame"].astype(str)
     if not config.summary_only:
         if not fano_df.empty:
             tables["fano_interactions"] = fano_df
         else:
             tables["fano_interactions"] = _empty_fano_dataframe()
+
+    fingerprint_df = build_sequence_fingerprints(tables)
+    if not fingerprint_df.empty:
+        tables["sequence_fingerprints"] = fingerprint_df
 
     written = write_outputs(
         tables,

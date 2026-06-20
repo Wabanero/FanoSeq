@@ -23,10 +23,12 @@ def test_pipeline_window_modes_on_examples(tmp_path: Path) -> None:
         "octonion_products.tsv",
         "octonion_triplets.tsv",
         "fano_interactions.tsv",
+        "sequence_fingerprints.tsv",
     ):
         assert (dna_out / filename).exists()
         assert filename in outputs
     assert {"sequence_id", "e0", "mono_entropy"}.issubset(outputs["window_octonions.tsv"].columns)
+    assert "window_n_windows" in outputs["sequence_fingerprints.tsv"].columns
     assert len(outputs["fano_interactions.tsv"]) == 7 * len(outputs["octonion_products.tsv"])
 
     protein_out = tmp_path / "protein_windows"
@@ -126,7 +128,8 @@ def test_parquet_output_format(tmp_path: Path) -> None:
         RunConfig(
             input_path=Path("examples/example_dna.fasta"),
             seq_type="dna",
-            mode="window",
+            mode="both",
+            frame="all",
             window_size=10,
             step=1,
             output_dir=output_dir,
@@ -134,9 +137,12 @@ def test_parquet_output_format(tmp_path: Path) -> None:
         )
     )
     assert "window_octonions.parquet" in outputs
+    assert "fano_interactions.parquet" in outputs
     assert (output_dir / "window_octonions.parquet").exists()
     loaded = pd.read_parquet(output_dir / "window_octonions.parquet")
     assert {"sequence_id", "e0", "mono_entropy"}.issubset(loaded.columns)
+    fano = pd.read_parquet(output_dir / "fano_interactions.parquet")
+    assert fano["frame"].map(type).eq(str).all()
 
 
 def test_bundle_output_manifest_and_partitioned_tables(tmp_path: Path) -> None:

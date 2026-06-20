@@ -24,7 +24,7 @@ FASTA
 -> transition, triplet and codon-level sequence descriptors
 ```
 
-FanoSeq supports DNA FASTA input, protein FASTA input, window-level descriptors, codon-level descriptors for DNA, Fano-line attribution, and TSV outputs designed for downstream analysis.
+FanoSeq supports DNA FASTA input, protein FASTA input, window-level descriptors, codon-level descriptors for DNA, Fano-line attribution, codon-matrix summaries, octonion-walk k-mer encodings, sequence fingerprints, distance matrices, Fano-triad motif counts, and downstream tensor export.
 
 ## Mathematical Background
 
@@ -115,7 +115,75 @@ The current implementation is coherent with the broad idea of using 8-dimensiona
 
 FanoSeq currently contributes a practical extraction engine: FASTA input → window or codon descriptors → octonions → products, commutators, associators, Fano-line attribution, and compact output tables. That makes it suitable for generating exploratory features, but not yet for claiming a matrix-genetic model of the genetic code.
 
-Useful next steps toward the research directions in the background document include adding a canonical 64-codon ordering, 8×8 codon matrix exports, Hadamard and dyadic-shift analyses, GF(8)-style codon labels, degeneracy-family symmetry tests, octonion-aware sequence distances, benchmark datasets, and downstream machine-learning examples.
+Useful next steps toward the research directions in the background document include adding benchmark datasets, downstream machine-learning examples, multi-track genomic input, protein-geometry input, and optional octonion-aware neural layers.
+
+## Application Map
+
+FanoSeq now separates implemented tooling from research directions that still require validation.
+
+| application direction | current FanoSeq support |
+| --- | --- |
+| 8-dimensional sequence descriptors | DNA/protein window encoders, codon products, octonion products, commutators, associators |
+| Matrix-genetics exploration | canonical 64-codon ordering, 8×8 codon matrix entries, root degeneracy, Hadamard spectra, dyadic-shift summaries, GF(8)-style labels |
+| Codon algebra and wobble analysis | ordered codon octonions, RSCU, GC1/GC2/GC3, synonymous-family size, codon embedding initializer |
+| Order-sensitive k-mer encoding | octonion-walk command using left-associated products over DNA k-mers |
+| Fano-plane motif exploration | Fano-line triad counts for DNA bases or protein residue groups |
+| Sequence comparison | merged sequence fingerprints, pairwise distance matrices, nearest-neighbor tables |
+| AI-ready exports | NPZ tensor export shaped as [N, 8, L] from component tables |
+| Multi-omics and deep octonion networks | design target only; the environment includes useful downstream libraries, but no biological benchmark is claimed yet |
+
+The first supported downstream workflow is: run FanoSeq, inspect compact fingerprints, compute distances/neighbors, and export octonion component tensors for external modelling. The matrix-genetics workflow is separate: it summarizes the genetic code itself rather than a FASTA file.
+
+## Octonion Encoding Registry
+
+FanoSeq includes a small registry of concrete encodings:
+
+| encoding | purpose |
+| --- | --- |
+| dna-base-context | 8-channel base plus previous-base context |
+| gf8-base | sparse base encoding with base axis plus RY/SW/MK chemistry |
+| octonion-walk | left-associated product over DNA k-mers |
+| codon-embedding-init | 64×8 codon embedding table initialized from root chemistry, wobble chemistry, stop/sense state, and degeneracy |
+| protein-groups | residue-level 8-group physicochemical encoding |
+| multi-track | pack up to eight synchronized genomic or omics tracks into octonion components |
+
+List the registry:
+
+```bash
+fanoseq list-encodings
+```
+
+Write an order-sensitive k-mer walk table:
+
+```bash
+fanoseq octonion-walk --input examples/example_dna.fasta --k 6 --step 1 --output-dir results/example_walks
+```
+
+Write a codon embedding initializer for downstream models:
+
+```bash
+fanoseq codon-embedding-init --output-dir results/codon_embedding_init
+```
+
+## Matrix-Genetics Tables
+
+The matrix-genetics command writes five tables:
+
+| table | contents |
+| --- | --- |
+| codon_matrix_entries | one row per codon in a canonical 8×8 layout |
+| codon_degeneracy_roots | first-two-base roots, wobble outcomes, strong/weak root flag |
+| codon_hadamard_spectrum | Walsh-Hadamard coefficients over codon-family-size signals |
+| codon_dyadic_shifts | XOR/dyadic shifts and amino-acid preservation summaries |
+| gf8_codon_labels | GF(8)-style row/column labels for each codon |
+
+Run it with:
+
+```bash
+fanoseq matrix-genetics --output-dir results/matrix_genetics --output-format bundle
+```
+
+These tables are meant for exploratory algebraic analysis and benchmarking. They do not prove that the genetic code is governed by octonions.
 
 ## Fano-Line Attribution
 
@@ -197,6 +265,36 @@ Sparse transition/event output can keep only strong local transitions:
 fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 100 --step 10 --output-dir results/example_dna_events --output-format bundle --top-k-transitions 10000
 ```
 
+Matrix-genetics tables:
+
+```bash
+fanoseq matrix-genetics --output-dir results/matrix_genetics --output-format bundle
+```
+
+Octonion-walk k-mer encodings:
+
+```bash
+fanoseq octonion-walk --input examples/example_dna.fasta --k 6 --step 1 --output-dir results/example_walks --output-format parquet
+```
+
+Distance matrix from sequence fingerprints:
+
+```bash
+fanoseq distances --fingerprints results/example_dna_parquet/sequence_fingerprints.parquet --output-dir results/example_distances
+```
+
+AI-ready tensor export from a component table:
+
+```bash
+fanoseq export-tensor --table results/example_dna_parquet/window_octonions.parquet --output results/example_dna_windows.npz
+```
+
+Fano-line triad counts:
+
+```bash
+fanoseq fano-triads --input examples/example_protein.fasta --seq-type protein --output-dir results/example_protein_triads
+```
+
 ## Output Files
 
 FanoSeq supports three output formats:
@@ -217,6 +315,7 @@ Bundle mode writes a directory such as:
 ```text
 sample.fanoseq/
   manifest.json
+  sequence_fingerprints.parquet/
   window_sequence_summary.parquet/
   window_octonions.parquet/
   octonion_products.parquet/
@@ -231,6 +330,8 @@ sample.fanoseq/
 The manifest stores schema version, input hash, run configuration, output table paths, row counts, and column names. Bundle tables are partitioned by `sequence_id` and, where appropriate, `frame`.
 
 `window_sequence_summary.tsv` or `.parquet` contains compact per-sequence fingerprints for window-mode runs. This is the main output retained by `--summary-only` for window analysis.
+
+`sequence_fingerprints.tsv` or `.parquet` merges available window and codon summaries into one downstream feature table per sequence. Use it for quick clustering, nearest-neighbor search, anomaly detection, or model baselines.
 
 `window_octonions.tsv` or `.parquet` contains one row per sequence window with auxiliary descriptors and `e0...e7` components.
 
@@ -333,9 +434,17 @@ PyArrow is used through pandas for Parquet and partitioned bundle output.
 
 Pandas is used for all TSV outputs and tabular aggregation.
 
+Polars and DuckDB are included for downstream querying of large Parquet and bundle outputs.
+
 Numba is used for accelerated octonion multiplication, commutator scans, associator scans, and batch processing.
 
 SciPy and scikit-learn are selected for downstream distance matrices, clustering, PCA, anomaly detection, and sequence-level fingerprints.
+
+UMAP, statsmodels, NetworkX, matplotlib, and seaborn are included for exploratory manifold views, statistical tests, graph summaries, and plots.
+
+Zarr and h5py are included for tensor-oriented downstream storage.
+
+PyYAML supports future configuration files, and tqdm supports progress reporting in larger runs.
 
 Typer and Rich provide the command-line interface and readable console output.
 
@@ -345,8 +454,6 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 
 - Add plotting
 - Add PCA/UMAP of window octonions
-- Add sequence-level fingerprints
-- Add pairwise sequence distances
 - Add benchmarks against k-mer features
 - Add benchmarks against codon-usage features
 - Add learned octonion filters
@@ -354,7 +461,9 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 - Add JSON/YAML config files
 - Add notebook examples
 - Add HTML reports
-- Add product-component attribution by Fano-plane interaction
 - Add codon-space visualizations
 - Add Fano-line heatmaps
 - Add sequence-level Fano interaction fingerprints
+- Add multi-track bedGraph/BigWig input
+- Add protein geometry encodings from PDB/mmCIF
+- Add optional PyTorch datasets and Fano-triad regularizers
