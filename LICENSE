@@ -1,0 +1,30 @@
+FanoSeq Source-Available Evaluation License
+
+Copyright (c) 2026 Filippo Bergeretti
+
+All rights reserved.
+
+This repository, including its source code, documentation, examples, assets, figures, logos, project structure, algorithms, sequence encodings, and associated research concepts, is made publicly available for viewing, evaluation, and portfolio-review purposes only.
+
+You may view the contents of this repository on GitHub.
+
+You may not, without explicit prior written permission from the copyright holder:
+
+- copy this software or substantial portions of it;
+- modify, adapt, translate, or create derivative works from it;
+- redistribute, publish, mirror, sublicense, sell, rent, or otherwise transfer it;
+- use it for commercial, institutional, consulting, product-development, or service-delivery purposes;
+- incorporate it into another software project, package, workflow, model, dataset, publication pipeline, or commercial system;
+- use the project name, logo, visual identity, or associated branding in a way that suggests endorsement, authorship, collaboration, or permission.
+
+No patent, trademark, database, model-training, or commercial-use rights are granted.
+
+Forking or viewing this repository through GitHub does not grant any rights beyond those required to view the repository on the GitHub platform.
+
+Scientific and research note:
+FanoSeq is an exploratory feature-engineering framework based on sequence-derived descriptors, octonion algebra, and Fano-plane-inspired representations. The public availability of this repository does not grant permission to reproduce, reuse, repackage, or publish the framework or its implementation without written permission.
+
+For permission requests or licensing inquiries, contact:
+
+Filippo Bergeretti
+fbergeretti@gmail.com
