@@ -501,3 +501,15 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 - Add multi-track bedGraph/BigWig input
 - Add protein geometry encodings from PDB/mmCIF
 - Add optional PyTorch datasets and Fano-triad regularizers
+
+## License
+
+This project is **source-available**, but it is **not open source**.
+
+Copyright © 2026 Filippo Bergeretti. All rights reserved.
+
+The code, documentation, examples, assets, logos, sequence encodings, algorithms, and associated research concepts are publicly visible for evaluation and portfolio-review purposes only.
+
+You may not copy, modify, redistribute, repackage, publish, sublicense, use commercially, or create derivative works from this project without explicit written permission.
+
+See [`LICENSE`](./LICENSE) for the full terms.
