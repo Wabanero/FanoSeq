@@ -1,0 +1,9 @@
+sequence_id	label	species_or_subject
+seq_pos_1	coding_like	subject_1
+seq_pos_2	coding_like	subject_2
+seq_pos_3	coding_like	subject_3
+seq_pos_4	coding_like	subject_4
+seq_neg_1	noncoding_like	subject_5
+seq_neg_2	noncoding_like	subject_6
+seq_neg_3	noncoding_like	subject_7
+seq_neg_4	noncoding_like	subject_8

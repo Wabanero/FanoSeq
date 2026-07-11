@@ -131,6 +131,45 @@ The practical consequence is simple: validate the algebra first, compare against
 
 Axis meanings are also versioned. The current DNA window mapping is `dna-window-v1`, and future coding/regulatory/shape mappings are registered separately so Fano-line interpretations remain reproducible. Axis definitions now include formulas, inputs, normalization, missing-data policy, implementation status, and benchmark comparators. See `docs/axis_schemes.md` and `docs/axis_definitions.md`.
 
+## Encoding Audit Framework
+
+FanoSeq includes an audit command for checking what the current encodings
+preserve, discard, duplicate, or change:
+
+```bash
+fanoseq audit-encoding \
+  --input examples/example_dna.fasta \
+  --seq-type dna \
+  --axis-scheme dna-window-v1 \
+  --checks reverse-complement,permutation,collision,mutation,redundancy,codon \
+  --output-dir results/encoding_audit
+```
+
+The audit writes formal encoding contracts, reverse-complement residuals, the
+complete 64-codon octonion catalog, collision and rank reports, synonymous and
+nonsynonymous codon geometry, mutation-sensitivity summaries, feature-redundancy
+controls, and axis-permutation/automorphism controls.
+
+Current default findings are deliberately modest:
+
+1. `dna-window-v1` respects reverse complementation through
+   `diag(1, -1, 1, -1, -1, -1, 1, 1)` for encodable windows.
+2. Products, commutators, associators, and Fano-line profiles do not receive a
+   forced reverse-complement equivariance claim; the audit reports measured
+   residuals and finite-window exceptions.
+3. `codon-product-v1` is injective over the 64 standard DNA codons under the
+   default non-normalized implementation, but synonymous clustering is measured,
+   not assumed.
+4. Fano-line interpretations depend on the biological axis assignment.
+5. Commutators can be equivalent to a structured antisymmetric interaction
+   expansion; real-valued antisymmetric controls are emitted beside octonion
+   features.
+6. Non-associativity is a property of the chosen algebra and association
+   convention, not evidence of a biological mechanism.
+
+See `docs/encoding_audit.md`, `docs/reverse_complement_behavior.md`,
+`docs/codon_geometry.md`, and `docs/octonion_vs_interaction_features.md`.
+
 ## Application Map
 
 FanoSeq now separates implemented tooling from research directions that still require validation.
@@ -312,6 +351,18 @@ Generate baseline comparator features:
 ```bash
 fanoseq baselines --input examples/example_dna.fasta --seq-type dna --kmer-k 4 --frame all --output-dir results/example_dna_baselines
 ```
+
+Run a leakage-controlled benchmark comparing FanoSeq feature families against
+composition, k-mer, FCGR, codon-usage, real-valued interaction, and
+random-projection controls:
+
+```bash
+fanoseq benchmark --config examples/benchmark.yaml --output-dir results/benchmark
+```
+
+Benchmark results may falsify the usefulness of the Fano structure for a
+particular dataset or task. That is an expected scientific outcome, not a
+failure of the framework.
 
 Protein window mode:
 

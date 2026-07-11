@@ -24,7 +24,13 @@ from fanoseq.axis_schemes import (
     validate_axis_scheme_definitions,
 )
 from fanoseq.baselines import build_baseline_tables
+from fanoseq.benchmark import run_benchmark as run_benchmark_command
 from fanoseq.distances import build_distance_matrix, build_neighbor_table
+from fanoseq.encoding_audit import (
+    EncodingAuditConfig,
+    build_encoding_audit_tables,
+    plot_encoding_audit_outputs,
+)
 from fanoseq.encodings import (
     build_codon_embedding_initialization,
     iter_octonion_walks,
@@ -290,6 +296,109 @@ def validate_axis_schemes(
         raise typer.Exit(code=1) from exc
 
 
+@app.command("audit-encoding")
+def audit_encoding(
+    input_path: Path = typer.Option(..., "--input", "-i", help="Path to FASTA file."),
+    seq_type: str = typer.Option(..., "--seq-type", help="Either 'dna' or 'protein'."),
+    axis_scheme_id: str = typer.Option(
+        "dna-window-v1",
+        "--axis-scheme",
+        help="Axis scheme to audit, for example dna-window-v1.",
+    ),
+    checks: str = typer.Option(
+        "reverse-complement,permutation,collision,mutation,redundancy,codon",
+        "--checks",
+        help=(
+            "Comma-separated checks: contracts, reverse-complement, permutation, "
+            "collision, mutation, redundancy, codon, or all."
+        ),
+    ),
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for audit outputs."),
+    window_size: int = typer.Option(10, "--window-size", help="Window size for window audits."),
+    step: int = typer.Option(1, "--step", help="Window step for window audits."),
+    kmer_k: int = typer.Option(2, "--kmer-k", help="k for k-mer entropy descriptors."),
+    epsilon: float = typer.Option(1e-9, "--epsilon", help="Small value to avoid division by zero."),
+    max_ambiguous_fraction: float = typer.Option(
+        0.0,
+        "--max-ambiguous-fraction",
+        help="Maximum ambiguous-character fraction allowed in an encoded unit.",
+    ),
+    codon_table: str = typer.Option("standard", "--codon-table", help="Codon table name or ID."),
+    codon_normalize: bool = typer.Option(
+        False,
+        "--codon-normalize",
+        help="Normalize codon octonions to unit norm when possible.",
+    ),
+    tolerance: float = typer.Option(1e-9, "--tolerance", help="Numerical tolerance."),
+    random_seed: int = typer.Option(0, "--random-seed", help="Deterministic random seed."),
+    permutation_samples: int = typer.Option(
+        16,
+        "--permutation-samples",
+        help="Random axis permutation/sign-flip controls to sample.",
+    ),
+    max_perturbations: int = typer.Option(
+        200,
+        "--max-perturbations",
+        help="Maximum perturbations scored per sequence.",
+    ),
+    output_format: str = typer.Option(
+        "tsv",
+        "--output-format",
+        help="Output storage format: tsv, parquet, or bundle.",
+    ),
+    plots: bool = typer.Option(
+        True,
+        "--plots/--no-plots",
+        help="Generate lightweight PNG visualizations beside the audit tables.",
+    ),
+) -> None:
+    """Audit what FanoSeq encodings preserve, lose, and change."""
+    try:
+        parsed_checks = tuple(piece.strip() for piece in checks.split(",") if piece.strip())
+        config = EncodingAuditConfig(
+            input_path=input_path,
+            seq_type=seq_type.lower(),  # type: ignore[arg-type]
+            axis_scheme_id=axis_scheme_id,
+            checks=parsed_checks,
+            window_size=window_size,
+            step=step,
+            kmer_k=kmer_k,
+            epsilon=epsilon,
+            max_ambiguous_fraction=max_ambiguous_fraction,
+            codon_table=codon_table,
+            output_format=output_format.lower(),  # type: ignore[arg-type]
+            random_seed=random_seed,
+            tolerance=tolerance,
+            permutation_samples=permutation_samples,
+            max_perturbations=max_perturbations,
+            normalize_codons=codon_normalize,
+        )
+        tables = build_encoding_audit_tables(config)
+        written = write_outputs(
+            tables,
+            output_dir,
+            output_format.lower(),  # type: ignore[arg-type]
+            manifest={
+                "format": "fanoseq-encoding-audit",
+                "input_path": str(input_path),
+                "seq_type": seq_type.lower(),
+                "axis_scheme_id": axis_scheme_id,
+                "checks": parsed_checks,
+                "schema_version": "0.8.0",
+            },
+        )
+        plot_paths = plot_encoding_audit_outputs(tables, output_dir) if plots else []
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[green]FanoSeq wrote {len(written)} audit table(s) to {output_dir}[/green]"
+    )
+    if plot_paths:
+        console.print(f"[green]FanoSeq wrote {len(plot_paths)} audit plot(s) to {output_dir}[/green]")
+
+
 @app.command("fano-plane")
 def fano_plane_command(
     axis_scheme_id: Optional[str] = typer.Option(
@@ -544,6 +653,23 @@ def baselines(
         console.print(f"[red]FanoSeq error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(f"[green]FanoSeq wrote {len(written)} baseline table(s) to {output_dir}[/green]")
+
+
+@app.command("benchmark")
+def benchmark(
+    config: Path = typer.Option(..., "--config", help="YAML or JSON benchmark manifest."),
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for benchmark outputs."),
+) -> None:
+    """Run a leakage-controlled benchmark and ablation suite."""
+    try:
+        outputs = run_benchmark_command(config, output_dir)
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[green]FanoSeq wrote benchmark outputs to {output_dir} "
+        f"({len(outputs)} files/tables).[/green]"
+    )
 
 
 @app.command("matrix-genetics")

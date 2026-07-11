@@ -1,0 +1,41 @@
+dataset:
+  table: benchmark_metadata.tsv
+  fasta: benchmark_sequences.fasta
+  id_column: sequence_id
+  target_column: label
+  group_column: species_or_subject
+  task: classification
+  seq_type: dna
+
+features:
+  - fanoseq_components
+  - fanoseq_products
+  - fanoseq_commutators
+  - fanoseq_associators
+  - fanoseq_fano_lines
+  - fanoseq_fingerprints
+  - nucleotide_composition
+  - kmer
+  - fcgr
+  - codon_usage
+  - real_polynomial_control
+  - random_projection_control
+
+feature_extraction:
+  window_size: 9
+  step: 3
+  kmer_k: 2
+  frame: 0
+
+evaluation:
+  outer_folds: 2
+  inner_folds: 2
+  repeats: 1
+  random_seed: 42
+  split_strategy: stratified_group
+  primary_metric: balanced_accuracy
+  models:
+    - logistic_regression
+  output_format: tsv
+  paired_permutation_rounds: 99
+  sequence_similarity_audit: true
