@@ -11,6 +11,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from fanoseq.axis_schemes import resolve_axis_scheme
 from fanoseq.codon_features import codon_entropy, encode_codon, iter_codons
 from fanoseq.dna_features import encode_dna_window
 from fanoseq.fano_attribution import fano_line_attribution
@@ -34,6 +35,7 @@ WINDOW_COLUMNS = [
     "end",
     "window",
     "seq_type",
+    "axis_scheme_id",
     "mono_entropy",
     "gc_content",
     "valid_fraction",
@@ -51,6 +53,7 @@ WINDOW_COLUMNS = [
 PRODUCT_COLUMNS = [
     "sequence_id",
     "position",
+    "axis_scheme_id",
     "window",
     "next_window",
     "p0",
@@ -69,6 +72,7 @@ PRODUCT_COLUMNS = [
 TRIPLET_COLUMNS = [
     "sequence_id",
     "position",
+    "axis_scheme_id",
     "window_1",
     "window_2",
     "window_3",
@@ -90,6 +94,7 @@ CODON_COLUMNS = [
     "start",
     "end",
     "codon",
+    "axis_scheme_id",
     "amino_acid",
     "is_start",
     "is_stop",
@@ -123,6 +128,7 @@ CODON_PRODUCT_COLUMNS = [
     "sequence_id",
     "frame",
     "position",
+    "axis_scheme_id",
     "codon",
     "next_codon",
     "amino_acid",
@@ -143,6 +149,7 @@ CODON_PRODUCT_COLUMNS = [
 CODON_USAGE_COLUMNS = [
     "sequence_id",
     "frame",
+    "axis_scheme_id",
     "codon",
     "amino_acid",
     "is_stop",
@@ -164,6 +171,7 @@ CODON_USAGE_COLUMNS = [
 CODON_SUMMARY_COLUMNS = [
     "sequence_id",
     "frame",
+    "axis_scheme_id",
     "n_valid_codons",
     "n_stop_codons",
     "stop_density",
@@ -180,6 +188,7 @@ CODON_SUMMARY_COLUMNS = [
 WINDOW_SUMMARY_COLUMNS = [
     "sequence_id",
     "seq_type",
+    "axis_scheme_id",
     "n_windows",
     "mean_transition_score",
     "max_transition_score",
@@ -222,6 +231,8 @@ class RunConfig:
     include_partial_codons: bool = False
     include_stop_codons: bool = True
     codon_normalize: bool = False
+    window_axis_scheme: str | None = None
+    codon_axis_scheme: str | None = None
     output_format: OutputFormat = "tsv"
     summary_only: bool = False
     top_k_transitions: int | None = None
@@ -235,13 +246,32 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     tables: dict[str, pd.DataFrame] = {}
     fano_rows: list[dict[str, object]] = []
+    window_axis_scheme_id: str | None = None
+    codon_axis_scheme_id: str | None = None
 
     if config.mode in {"window", "both"}:
-        window_df = build_window_octonions(records, config)
-        product_df, product_fano = build_window_products(window_df, config.seq_type)
+        window_scheme = resolve_axis_scheme(
+            config.seq_type,
+            "window",
+            config.window_axis_scheme,
+            require_runnable=True,
+        )
+        window_axis_scheme_id = window_scheme.scheme_id
+        window_df = build_window_octonions(records, config, window_axis_scheme_id)
+        product_df, product_fano = build_window_products(
+            window_df,
+            config.seq_type,
+            window_axis_scheme_id,
+        )
         product_df, product_fano = _filter_product_events(product_df, product_fano, config, "window")
-        triplet_df = build_window_triplets(window_df)
-        window_summary_df = build_window_summary(window_df, product_df, triplet_df, config.seq_type)
+        triplet_df = build_window_triplets(window_df, window_axis_scheme_id)
+        window_summary_df = build_window_summary(
+            window_df,
+            product_df,
+            triplet_df,
+            config.seq_type,
+            window_axis_scheme_id,
+        )
         tables["window_sequence_summary"] = window_summary_df
         if not config.summary_only:
             tables["window_octonions"] = window_df
@@ -250,14 +280,21 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
             fano_rows.extend(product_fano)
 
     if config.mode in {"codon", "both"}:
+        codon_scheme = resolve_axis_scheme(
+            "dna",
+            "codon",
+            config.codon_axis_scheme,
+            require_runnable=True,
+        )
+        codon_axis_scheme_id = codon_scheme.scheme_id
         genetic_code = get_genetic_code(config.codon_table)
-        codon_df = build_codon_octonions(records, config, genetic_code)
-        codon_product_df, codon_fano = build_codon_products(codon_df)
+        codon_df = build_codon_octonions(records, config, genetic_code, codon_axis_scheme_id)
+        codon_product_df, codon_fano = build_codon_products(codon_df, codon_axis_scheme_id)
         codon_product_df, codon_fano = _filter_product_events(
             codon_product_df, codon_fano, config, "codon"
         )
-        usage_df = build_codon_usage(codon_df, genetic_code, config)
-        summary_df = build_codon_summary(codon_df, codon_product_df)
+        usage_df = build_codon_usage(codon_df, genetic_code, config, codon_axis_scheme_id)
+        summary_df = build_codon_summary(codon_df, codon_product_df, codon_axis_scheme_id)
         tables["codon_usage_fano_features"] = usage_df
         tables["codon_usage_sequence_summary"] = summary_df
         if not config.summary_only:
@@ -282,15 +319,25 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
         tables,
         config.output_dir,
         config.output_format,
-        manifest=_build_manifest(config),
+        manifest=_build_manifest(config, window_axis_scheme_id, codon_axis_scheme_id),
     )
     return {relative_path: tables[stem] for stem, relative_path in written.items()}
 
 
-def build_window_octonions(records: object, config: RunConfig) -> pd.DataFrame:
+def build_window_octonions(
+    records: object,
+    config: RunConfig,
+    axis_scheme_id: str | None = None,
+) -> pd.DataFrame:
     """Build the window_octonions table."""
     rows: list[dict[str, object]] = []
     assert config.window_size is not None
+    axis_scheme_id = axis_scheme_id or resolve_axis_scheme(
+        config.seq_type,
+        "window",
+        config.window_axis_scheme,
+        require_runnable=True,
+    ).scheme_id
     for record in records:
         for window in iter_windows(record.sequence, config.window_size, config.step):
             if config.seq_type == "dna":
@@ -317,6 +364,7 @@ def build_window_octonions(records: object, config: RunConfig) -> pd.DataFrame:
                 "end": window.end,
                 "window": window.sequence,
                 "seq_type": config.seq_type,
+                "axis_scheme_id": axis_scheme_id,
                 **metadata,
             }
             row.update(_component_dict("e", octonion.components))
@@ -325,11 +373,17 @@ def build_window_octonions(records: object, config: RunConfig) -> pd.DataFrame:
 
 
 def build_window_products(
-    window_df: pd.DataFrame, seq_type: str
+    window_df: pd.DataFrame,
+    seq_type: str,
+    axis_scheme_id: str | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, object]]]:
     """Build adjacent window product rows and Fano attribution rows."""
     rows: list[dict[str, object]] = []
     fano_rows: list[dict[str, object]] = []
+    axis_scheme_id = axis_scheme_id or _table_axis_scheme_id(
+        window_df,
+        resolve_axis_scheme(seq_type, "window", require_runnable=True).scheme_id,
+    )
     for _, group in window_df.groupby("sequence_id", sort=False):
         ordered = group.sort_values("position").reset_index(drop=True)
         for idx in range(len(ordered) - 1):
@@ -345,6 +399,7 @@ def build_window_products(
             row = {
                 "sequence_id": left["sequence_id"],
                 "position": int(left["position"]),
+                "axis_scheme_id": axis_scheme_id,
                 "window": left["window"],
                 "next_window": right["window"],
                 **_component_dict("p", product.components),
@@ -364,14 +419,19 @@ def build_window_products(
                     position=int(left["position"]),
                     left_object=str(left["window"]),
                     right_object=str(right["window"]),
+                    axis_scheme_id=axis_scheme_id,
                 )
             )
     return pd.DataFrame(rows, columns=PRODUCT_COLUMNS), fano_rows
 
 
-def build_window_triplets(window_df: pd.DataFrame) -> pd.DataFrame:
+def build_window_triplets(
+    window_df: pd.DataFrame,
+    axis_scheme_id: str | None = None,
+) -> pd.DataFrame:
     """Build consecutive window triplet associator rows."""
     rows: list[dict[str, object]] = []
+    axis_scheme_id = axis_scheme_id or _table_axis_scheme_id(window_df, "dna-window-v1")
     for _, group in window_df.groupby("sequence_id", sort=False):
         ordered = group.sort_values("position").reset_index(drop=True)
         for idx in range(len(ordered) - 2):
@@ -389,6 +449,7 @@ def build_window_triplets(window_df: pd.DataFrame) -> pd.DataFrame:
             row = {
                 "sequence_id": first["sequence_id"],
                 "position": int(first["position"]),
+                "axis_scheme_id": axis_scheme_id,
                 "window_1": first["window"],
                 "window_2": second["window"],
                 "window_3": third["window"],
@@ -404,10 +465,15 @@ def build_window_summary(
     product_df: pd.DataFrame,
     triplet_df: pd.DataFrame,
     seq_type: str,
+    axis_scheme_id: str | None = None,
 ) -> pd.DataFrame:
     """Build compact per-sequence window trajectory fingerprints."""
     if window_df.empty:
         return pd.DataFrame(columns=WINDOW_SUMMARY_COLUMNS)
+    axis_scheme_id = axis_scheme_id or _table_axis_scheme_id(
+        window_df,
+        resolve_axis_scheme(seq_type, "window", require_runnable=True).scheme_id,
+    )
 
     rows: list[dict[str, object]] = []
     for sequence_id, group in window_df.groupby("sequence_id", sort=False):
@@ -416,6 +482,7 @@ def build_window_summary(
         row: dict[str, object] = {
             "sequence_id": sequence_id,
             "seq_type": seq_type,
+            "axis_scheme_id": axis_scheme_id,
             "n_windows": len(group),
             "mean_transition_score": float(products["transition_score"].mean())
             if not products.empty
@@ -438,7 +505,10 @@ def build_window_summary(
 
 
 def build_codon_octonions(
-    records: object, config: RunConfig, genetic_code: GeneticCode
+    records: object,
+    config: RunConfig,
+    genetic_code: GeneticCode,
+    axis_scheme_id: str = "codon-product-v1",
 ) -> pd.DataFrame:
     """Build the codon_octonions table."""
     rows: list[dict[str, object]] = []
@@ -462,6 +532,7 @@ def build_codon_octonions(
                     "start": codon_slice.start,
                     "end": codon_slice.end,
                     "codon": codon_slice.codon,
+                    "axis_scheme_id": axis_scheme_id,
                     **encoded.metadata,
                 }
                 row.update(_component_dict("e", encoded.octonion.components))
@@ -469,7 +540,10 @@ def build_codon_octonions(
     return pd.DataFrame(rows, columns=CODON_COLUMNS)
 
 
-def build_codon_products(codon_df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+def build_codon_products(
+    codon_df: pd.DataFrame,
+    axis_scheme_id: str = "codon-product-v1",
+) -> tuple[pd.DataFrame, list[dict[str, object]]]:
     """Build adjacent codon products and Fano attribution rows."""
     rows: list[dict[str, object]] = []
     fano_rows: list[dict[str, object]] = []
@@ -489,6 +563,7 @@ def build_codon_products(codon_df: pd.DataFrame) -> tuple[pd.DataFrame, list[dic
                     "sequence_id": left["sequence_id"],
                     "frame": int(left["frame"]),
                     "position": int(left["codon_index"]),
+                    "axis_scheme_id": axis_scheme_id,
                     "codon": left["codon"],
                     "next_codon": right["codon"],
                     "amino_acid": left["amino_acid"],
@@ -510,13 +585,17 @@ def build_codon_products(codon_df: pd.DataFrame) -> tuple[pd.DataFrame, list[dic
                     position=int(left["codon_index"]),
                     left_object=str(left["codon"]),
                     right_object=str(right["codon"]),
+                    axis_scheme_id=axis_scheme_id,
                 )
             )
     return pd.DataFrame(rows, columns=CODON_PRODUCT_COLUMNS), fano_rows
 
 
 def build_codon_usage(
-    codon_df: pd.DataFrame, genetic_code: GeneticCode, config: RunConfig
+    codon_df: pd.DataFrame,
+    genetic_code: GeneticCode,
+    config: RunConfig,
+    axis_scheme_id: str = "codon-product-v1",
 ) -> pd.DataFrame:
     """Build codon usage and codon-octonion summary rows."""
     if codon_df.empty:
@@ -560,6 +639,7 @@ def build_codon_usage(
             row = {
                 "sequence_id": sequence_id,
                 "frame": int(frame),
+                "axis_scheme_id": axis_scheme_id,
                 "codon": codon,
                 "amino_acid": aa,
                 "is_stop": genetic_code.is_stop(codon),
@@ -574,7 +654,11 @@ def build_codon_usage(
     return pd.DataFrame(rows, columns=CODON_USAGE_COLUMNS)
 
 
-def build_codon_summary(codon_df: pd.DataFrame, codon_product_df: pd.DataFrame) -> pd.DataFrame:
+def build_codon_summary(
+    codon_df: pd.DataFrame,
+    codon_product_df: pd.DataFrame,
+    axis_scheme_id: str = "codon-product-v1",
+) -> pd.DataFrame:
     """Build per-sequence/per-frame codon summary rows."""
     if codon_df.empty:
         return pd.DataFrame(columns=CODON_SUMMARY_COLUMNS)
@@ -588,6 +672,7 @@ def build_codon_summary(codon_df: pd.DataFrame, codon_product_df: pd.DataFrame) 
         row = {
             "sequence_id": sequence_id,
             "frame": int(frame),
+            "axis_scheme_id": axis_scheme_id,
             "n_valid_codons": n_valid,
             "n_stop_codons": n_stop,
             "stop_density": n_stop / n_valid if n_valid else 0.0,
@@ -622,6 +707,19 @@ def _validate_config(config: RunConfig) -> None:
     if config.mode in {"window", "both"}:
         if config.window_size is None or config.window_size <= 0:
             raise ValueError("--window-size is required for window and both modes and must be > 0.")
+        resolve_axis_scheme(
+            config.seq_type,
+            "window",
+            config.window_axis_scheme,
+            require_runnable=True,
+        )
+    if config.mode in {"codon", "both"}:
+        resolve_axis_scheme(
+            "dna",
+            "codon",
+            config.codon_axis_scheme,
+            require_runnable=True,
+        )
     if config.step <= 0:
         raise ValueError("--step must be > 0.")
     if config.kmer_k <= 0:
@@ -644,6 +742,17 @@ def _component_dict(prefix: str, values: np.ndarray) -> dict[str, float]:
 
 def _row_octonion(row: pd.Series, prefix: str) -> Octonion:
     return Octonion([float(row[f"{prefix}{index}"]) for index in range(8)])
+
+
+def _table_axis_scheme_id(table: pd.DataFrame, default: str) -> str:
+    if "axis_scheme_id" not in table.columns or table.empty:
+        return default
+    values = table["axis_scheme_id"].dropna().astype(str).unique()
+    if len(values) == 1:
+        return str(values[0])
+    if len(values) > 1:
+        raise ValueError("Expected one axis_scheme_id per component table.")
+    return default
 
 
 def _filter_product_events(
@@ -686,11 +795,13 @@ def _empty_fano_dataframe() -> pd.DataFrame:
             "sequence_id",
             "mode",
             "seq_type",
+            "axis_scheme_id",
             "frame",
             "position",
             "left_object",
             "right_object",
             "fano_line",
+            "line_label",
             "axis_a",
             "axis_b",
             "axis_c",
@@ -708,7 +819,11 @@ def _empty_fano_dataframe() -> pd.DataFrame:
     )
 
 
-def _build_manifest(config: RunConfig) -> dict[str, object]:
+def _build_manifest(
+    config: RunConfig,
+    window_axis_scheme_id: str | None,
+    codon_axis_scheme_id: str | None,
+) -> dict[str, object]:
     return {
         "format": "fanoseq-bundle",
         "schema_version": SCHEMA_VERSION,
@@ -727,10 +842,16 @@ def _build_manifest(config: RunConfig) -> dict[str, object]:
             "include_partial_codons": config.include_partial_codons,
             "include_stop_codons": config.include_stop_codons,
             "codon_normalize": config.codon_normalize,
+            "window_axis_scheme": window_axis_scheme_id,
+            "codon_axis_scheme": codon_axis_scheme_id,
             "output_format": config.output_format,
             "summary_only": config.summary_only,
             "top_k_transitions": config.top_k_transitions,
             "transition_threshold": config.transition_threshold,
+        },
+        "axis_schemes": {
+            "window": window_axis_scheme_id,
+            "codon": codon_axis_scheme_id,
         },
     }
 

@@ -28,6 +28,8 @@ def test_pipeline_window_modes_on_examples(tmp_path: Path) -> None:
         assert (dna_out / filename).exists()
         assert filename in outputs
     assert {"sequence_id", "e0", "mono_entropy"}.issubset(outputs["window_octonions.tsv"].columns)
+    assert outputs["window_octonions.tsv"]["axis_scheme_id"].eq("dna-window-v1").all()
+    assert "line_label" in outputs["fano_interactions.tsv"].columns
     assert "window_n_windows" in outputs["sequence_fingerprints.tsv"].columns
     assert len(outputs["fano_interactions.tsv"]) == 7 * len(outputs["octonion_products.tsv"])
 
@@ -44,6 +46,7 @@ def test_pipeline_window_modes_on_examples(tmp_path: Path) -> None:
     )
     assert (protein_out / "window_octonions.tsv").exists()
     assert protein_outputs["window_octonions.tsv"]["gc_content"].isna().all()
+    assert protein_outputs["window_octonions.tsv"]["axis_scheme_id"].eq("protein-sequence-v1").all()
 
 
 def test_pipeline_codon_and_both_modes_on_examples(tmp_path: Path) -> None:
@@ -69,6 +72,7 @@ def test_pipeline_codon_and_both_modes_on_examples(tmp_path: Path) -> None:
     assert {"codon", "amino_acid", "codon_associator_score", "e7"}.issubset(
         codon_outputs["codon_octonions.tsv"].columns
     )
+    assert codon_outputs["codon_octonions.tsv"]["axis_scheme_id"].eq("codon-product-v1").all()
     assert len(codon_outputs["fano_interactions.tsv"]) == 7 * len(
         codon_outputs["codon_transition_products.tsv"]
     )
@@ -119,6 +123,32 @@ def test_no_products_across_skipped_invalid_windows_or_codons(tmp_path: Path) ->
     )
     assert list(codon_outputs["codon_octonions.tsv"]["codon_index"]) == [0, 2]
     assert codon_outputs["codon_transition_products.tsv"].empty
+
+
+def test_explicit_axis_scheme_selection_and_rejection(tmp_path: Path) -> None:
+    outputs = run_analysis(
+        RunConfig(
+            input_path=Path("examples/example_dna.fasta"),
+            seq_type="dna",
+            mode="window",
+            window_size=10,
+            output_dir=tmp_path / "explicit_axis_scheme",
+            window_axis_scheme="dna-window-v1",
+        )
+    )
+    assert outputs["window_octonions.tsv"]["axis_scheme_id"].eq("dna-window-v1").all()
+
+    with pytest.raises(ValueError, match="not implemented by fanoseq run"):
+        run_analysis(
+            RunConfig(
+                input_path=Path("examples/example_dna.fasta"),
+                seq_type="dna",
+                mode="window",
+                window_size=10,
+                output_dir=tmp_path / "rejected_axis_scheme",
+                window_axis_scheme="dna-coding-v1",
+            )
+        )
 
 
 def test_parquet_output_format(tmp_path: Path) -> None:

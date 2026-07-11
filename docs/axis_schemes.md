@@ -3,6 +3,8 @@
 FanoSeq separates octonion algebra from the biological meaning assigned to each
 axis. The algebraic basis is fixed by the oriented Fano-plane convention, but
 the interpretation of e1...e7 depends on an explicit, versioned axis scheme.
+The concrete formulas and missing-data policies for each axis are documented in
+`docs/axis_definitions.md` and exported by the CLI.
 
 This avoids a common mistake: an eight-dimensional feature vector is not
 automatically a biologically meaningful octonion. It becomes interpretable only
@@ -22,6 +24,18 @@ Describe one scheme:
 fanoseq describe-axis-scheme dna-window-v1
 ```
 
+List the concrete axis formulas:
+
+```bash
+fanoseq list-axis-definitions --scheme-id dna-window-v1
+```
+
+Validate all registered definitions:
+
+```bash
+fanoseq validate-axis-schemes
+```
+
 Write scheme metadata, axis definitions, and Fano-line definitions:
 
 ```bash
@@ -33,8 +47,8 @@ fanoseq describe-axis-scheme dna-window-v1 --output-dir results/axis_schemes/dna
 | scheme_id | status | purpose |
 | --- | --- | --- |
 | dna-window-v1 | stable | Current/default DNA window descriptor scheme |
-| dna-coding-v1 | experimental | Future coding/CDS windows with GC3, frame periodicity, codon bias |
-| dna-regulatory-v1 | experimental | Future regulatory windows with CpG, palindrome, motif-density, entropy |
+| dna-coding-v1 | experimental | Defined but not runnable coding/CDS windows with GC3, frame periodicity, codon bias |
+| dna-regulatory-v1 | experimental | Defined but not runnable regulatory windows with CpG, palindrome, motif-density, entropy |
 | dna-shape-v1 | planned | Future DNA-shape and multi-track scheme |
 | protein-sequence-v1 | stable | Current/default protein sequence descriptor scheme |
 | codon-product-v1 | stable | Current/default ordered codon product scheme |
@@ -60,7 +74,7 @@ example, `(1,7,6)` is interpreted as the RY/symmetry/complexity triad.
 
 ## dna-coding-v1
 
-This scheme is registered but not yet wired into `fanoseq run`.
+This scheme has concrete axis definitions but is not yet wired into `fanoseq run`.
 
 | axis | intended meaning |
 | --- | --- |
@@ -79,7 +93,7 @@ baselines before any biological claim is made.
 
 ## dna-regulatory-v1
 
-This scheme is registered but not yet wired into `fanoseq run`.
+This scheme has concrete axis definitions but is not yet wired into `fanoseq run`.
 
 | axis | intended meaning |
 | --- | --- |
@@ -128,10 +142,13 @@ Every scheme should define:
 
 - scalar axis role
 - imaginary axis labels and value ranges
+- formula, input fields, normalization, and missing-data policy
 - Fano-line labels
 - recommended use
 - limitations
 - benchmark baselines
 
-Future `fanoseq run --axis-scheme ...` support should use this registry as the
-source of truth.
+Runnable `fanoseq run --window-axis-scheme ...` and
+`fanoseq run --codon-axis-scheme ...` support uses this registry as the source
+of truth. Experimental schemes can be exported and validated, but `fanoseq run`
+rejects them until their encoders are implemented.

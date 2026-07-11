@@ -16,7 +16,13 @@ from fanoseq.algebra import (
     validation_passed,
     validation_report,
 )
-from fanoseq.axis_schemes import axis_scheme_tables, get_axis_scheme, list_axis_schemes
+from fanoseq.axis_schemes import (
+    axis_scheme_tables,
+    get_axis_scheme,
+    list_axis_definitions,
+    list_axis_schemes,
+    validate_axis_scheme_definitions,
+)
 from fanoseq.baselines import build_baseline_tables
 from fanoseq.distances import build_distance_matrix, build_neighbor_table
 from fanoseq.encodings import (
@@ -76,6 +82,21 @@ def run(
         "--codon-normalize",
         help="Normalize codon octonions to unit norm when possible.",
     ),
+    axis_scheme: Optional[str] = typer.Option(
+        None,
+        "--axis-scheme",
+        help="Shortcut for a single runnable scheme in window or codon mode.",
+    ),
+    window_axis_scheme: Optional[str] = typer.Option(
+        None,
+        "--window-axis-scheme",
+        help="Runnable window axis scheme. Defaults to dna-window-v1 or protein-sequence-v1.",
+    ),
+    codon_axis_scheme: Optional[str] = typer.Option(
+        None,
+        "--codon-axis-scheme",
+        help="Runnable codon axis scheme. Defaults to codon-product-v1.",
+    ),
     output_format: str = typer.Option(
         "tsv",
         "--output-format",
@@ -99,11 +120,24 @@ def run(
 ) -> None:
     """Run FanoSeq on DNA or protein FASTA input."""
     try:
+        mode_normalized = mode.lower()
+        window_axis_scheme_effective = window_axis_scheme
+        codon_axis_scheme_effective = codon_axis_scheme
+        if axis_scheme is not None:
+            if mode_normalized == "window":
+                window_axis_scheme_effective = axis_scheme
+            elif mode_normalized == "codon":
+                codon_axis_scheme_effective = axis_scheme
+            else:
+                raise ValueError(
+                    "--axis-scheme is ambiguous for --mode both; use "
+                    "--window-axis-scheme and --codon-axis-scheme."
+                )
         parsed_frame: int | str = "all" if frame == "all" else int(frame)
         config = RunConfig(
             input_path=input_path,
             seq_type=seq_type.lower(),  # type: ignore[arg-type]
-            mode=mode.lower(),  # type: ignore[arg-type]
+            mode=mode_normalized,  # type: ignore[arg-type]
             output_dir=output_dir,
             window_size=window_size,
             step=step,
@@ -115,6 +149,8 @@ def run(
             include_partial_codons=include_partial_codons,
             include_stop_codons=include_stop_codons,
             codon_normalize=codon_normalize,
+            window_axis_scheme=window_axis_scheme_effective,
+            codon_axis_scheme=codon_axis_scheme_effective,
             output_format=output_format.lower(),  # type: ignore[arg-type]
             summary_only=summary_only,
             top_k_transitions=top_k_transitions,
@@ -144,6 +180,23 @@ def list_axis_schemes_command() -> None:
     console.print(table.to_string(index=False))
 
 
+@app.command("list-axis-definitions")
+def list_axis_definitions_command(
+    scheme_id: Optional[str] = typer.Option(
+        None,
+        "--scheme-id",
+        help="Optional axis scheme id. Defaults to all schemes.",
+    ),
+) -> None:
+    """List concrete axis formulas, inputs, scaling, and missing-data policies."""
+    try:
+        table = list_axis_definitions(scheme_id)
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(table.to_string(index=False))
+
+
 @app.command("describe-axis-scheme")
 def describe_axis_scheme(
     scheme_id: str = typer.Argument(..., help="Axis scheme id, for example dna-window-v1."),
@@ -163,7 +216,9 @@ def describe_axis_scheme(
             f"{scheme.recommended_use}\n\n"
             f"[bold]Axes[/bold]\n{tables['axis_scheme_axes'].to_string(index=False)}\n\n"
             f"[bold]Fano lines[/bold]\n"
-            f"{tables['axis_scheme_fano_lines'][['fano_line', 'line_label']].to_string(index=False)}"
+            f"{tables['axis_scheme_fano_lines'][['fano_line', 'line_label']].to_string(index=False)}\n\n"
+            f"[bold]Validation[/bold]\n"
+            f"{tables['axis_scheme_validation'][['check_id', 'passed']].to_string(index=False)}"
         )
         if output_dir is not None:
             written = write_outputs(
@@ -179,6 +234,51 @@ def describe_axis_scheme(
             console.print(
                 f"[green]FanoSeq wrote {len(written)} axis-scheme table(s) to {output_dir}[/green]"
             )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("validate-axis-schemes")
+def validate_axis_schemes(
+    scheme_id: Optional[str] = typer.Option(
+        None,
+        "--scheme-id",
+        help="Optional axis scheme id. Defaults to all schemes.",
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional directory for axis-scheme validation tables.",
+    ),
+    output_format: str = typer.Option(
+        "tsv",
+        "--output-format",
+        help="Output storage format when --output-dir is supplied.",
+    ),
+) -> None:
+    """Validate completeness and run-readiness of registered axis definitions."""
+    try:
+        validation = validate_axis_scheme_definitions(scheme_id)
+        if output_dir is not None:
+            written = write_outputs(
+                {"axis_scheme_validation": validation},
+                output_dir,
+                output_format.lower(),  # type: ignore[arg-type]
+                manifest={
+                    "format": "fanoseq-axis-scheme-validation",
+                    "scheme_id": scheme_id or "all",
+                    "schema_version": "0.6.0",
+                },
+            )
+            console.print(
+                f"[green]FanoSeq wrote {len(written)} axis validation table(s) to {output_dir}[/green]"
+            )
+        console.print(validation.to_string(index=False))
+        if not validation["passed"].all():
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
     except Exception as exc:
         console.print(f"[red]FanoSeq error:[/red] {exc}")
         raise typer.Exit(code=1) from exc

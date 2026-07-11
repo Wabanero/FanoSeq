@@ -8,13 +8,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from fanoseq.axis_schemes import axis_labels_for_context
+from fanoseq.axis_schemes import axis_labels_for_context, resolve_axis_scheme
 from fanoseq.octonion import FANO_LINES
 
 
-def axis_labels(mode: str, seq_type: str) -> dict[int, str]:
+def axis_labels(mode: str, seq_type: str, scheme_id: str | None = None) -> dict[int, str]:
     """Return axis labels for a mode and sequence type."""
-    return axis_labels_for_context(seq_type=seq_type, mode=mode)
+    return axis_labels_for_context(seq_type=seq_type, mode=mode, scheme_id=scheme_id)
 
 
 def fano_line_attribution(
@@ -28,11 +28,14 @@ def fano_line_attribution(
     position: int,
     left_object: str,
     right_object: str,
+    axis_scheme_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return seven Fano-line contribution rows for one adjacent product."""
-    labels = axis_labels(mode, seq_type)
+    scheme = resolve_axis_scheme(seq_type=seq_type, mode=mode, scheme_id=axis_scheme_id)
+    labels = scheme.axis_labels()
     rows: list[dict[str, Any]] = []
     for a, b, c in FANO_LINES:
+        fano_line = (a, b, c)
         pair_ab_to_c = float(left[a] * right[b] - left[b] * right[a])
         pair_bc_to_a = float(left[b] * right[c] - left[c] * right[b])
         pair_ca_to_b = float(left[c] * right[a] - left[a] * right[c])
@@ -44,11 +47,13 @@ def fano_line_attribution(
                 "sequence_id": sequence_id,
                 "mode": mode,
                 "seq_type": seq_type,
+                "axis_scheme_id": scheme.scheme_id,
                 "frame": frame,
                 "position": position,
                 "left_object": left_object,
                 "right_object": right_object,
                 "fano_line": f"({a},{b},{c})",
+                "line_label": scheme.line_label(fano_line),
                 "axis_a": a,
                 "axis_b": b,
                 "axis_c": c,

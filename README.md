@@ -129,7 +129,7 @@ FanoSeq follows an evidence-maturity model:
 
 The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md` and `docs/implementation_roadmap.md`.
 
-Axis meanings are also versioned. The current DNA window mapping is `dna-window-v1`, and future coding/regulatory/shape mappings are registered separately so Fano-line interpretations remain reproducible. See `docs/axis_schemes.md`.
+Axis meanings are also versioned. The current DNA window mapping is `dna-window-v1`, and future coding/regulatory/shape mappings are registered separately so Fano-line interpretations remain reproducible. Axis definitions now include formulas, inputs, normalization, missing-data policy, implementation status, and benchmark comparators. See `docs/axis_schemes.md` and `docs/axis_definitions.md`.
 
 ## Application Map
 
@@ -179,6 +179,24 @@ Describe the current DNA window axis scheme and its Fano-line semantics:
 
 ```bash
 fanoseq describe-axis-scheme dna-window-v1
+```
+
+List concrete axis formulas and input definitions:
+
+```bash
+fanoseq list-axis-definitions --scheme-id dna-window-v1
+```
+
+Validate all registered axis definitions:
+
+```bash
+fanoseq validate-axis-schemes
+```
+
+Select an implemented axis scheme during a run:
+
+```bash
+fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 10 --output-dir results/example_dna --window-axis-scheme dna-window-v1
 ```
 
 Write an order-sensitive k-mer walk table:
@@ -385,7 +403,7 @@ The manifest stores schema version, input hash, run configuration, output table 
 
 `fanoseq_multipanel.png` is an optional diagnostic figure created by `fanoseq plot-multipanel`. Window plots include octonion component trajectories, descriptor tracks, transition and associator scores, Fano-line contribution heatmaps, top Fano lines, and a run summary. Codon plots use codon-index trajectories, codon descriptors, transition scores, Fano-line heatmaps, codon-usage summaries, and a run summary.
 
-`window_octonions.tsv` or `.parquet` contains one row per sequence window with auxiliary descriptors and `e0...e7` components.
+`window_octonions.tsv` or `.parquet` contains one row per sequence window with `axis_scheme_id`, auxiliary descriptors, and `e0...e7` components.
 
 ```text
 sequence_id  position  start  end  window      e0       e1
@@ -401,7 +419,7 @@ seq1         0         ACGTACGTAC  CGTACGTACA   1.842311      0.912444
 
 `octonion_triplets.tsv` contains consecutive triplet associator components `a0...a7` and `associator_score`.
 
-`codon_octonions.tsv` contains codon coordinates, amino-acid annotation, start/stop flags, position-wise base properties, `codon_associator_score`, and `e0...e7`.
+`codon_octonions.tsv` contains codon coordinates, `axis_scheme_id`, amino-acid annotation, start/stop flags, position-wise base properties, `codon_associator_score`, and `e0...e7`.
 
 ```text
 sequence_id  frame  codon_index  codon  amino_acid  is_start  e0
@@ -422,8 +440,8 @@ seq1         0      ATG    M           2      0.200000   1.000000
 `fano_interactions.tsv` contains seven Fano-line attribution rows per adjacent product for window and codon modes.
 
 ```text
-sequence_id  mode    position  fano_line  axis_a_label                 line_contribution_norm
-seq1         window  0         (1,2,3)    purine/pyrimidine balance    0.250000
+sequence_id  mode    axis_scheme_id  position  fano_line  line_label            axis_a_label                 line_contribution_norm
+seq1         window  dna-window-v1    0         (1,2,3)    base chemistry triad  purine/pyrimidine balance    0.250000
 ```
 
 ## Interpretation Guide
@@ -514,7 +532,7 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 - Add benchmarks against codon-usage features
 - Add PCA/UMAP of window octonions
 - Add learned octonion filters
-- Add configurable axis definitions
+- Implement runnable encoders for dna-coding-v1 and dna-regulatory-v1
 - Add JSON/YAML config files
 - Add notebook examples
 - Add HTML reports

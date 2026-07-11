@@ -28,6 +28,8 @@ def test_fano_line_formula_for_selected_lines() -> None:
     line_123 = next(row for row in rows if row["fano_line"] == "(1,2,3)")
     line_145 = next(row for row in rows if row["fano_line"] == "(1,4,5)")
     assert line_123["pair_ab_to_c"] == x[1] * y[2] - x[2] * y[1]
+    assert line_123["axis_scheme_id"] == "dna-window-v1"
+    assert line_123["line_label"] == "base chemistry triad"
     assert line_145["pair_ab_to_c"] == x[1] * y[4] - x[4] * y[1]
     assert all(row["line_contribution_norm"] >= 0 for row in rows)
 
@@ -107,4 +109,3 @@ def test_scalar_and_same_axis_terms_are_not_included() -> None:
         right_object="r",
     )
     assert all(row["line_contribution_norm"] == 0 for row in same_axis_rows)
-
