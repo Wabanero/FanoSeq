@@ -47,34 +47,41 @@ Next improvements:
 
 ## Phase 3: Reproducible Benchmark Harness
 
-Status: planned.
+Status: harness implemented; public benchmark datasets pending.
 
-Target command:
+Implemented command:
 
 ```bash
-fanoseq benchmark --manifest benchmarks/example.tsv --features fanoseq,kmer,gc,codon --task classify
+fanoseq benchmark --config examples/benchmark.yaml --output-dir results/benchmark
 ```
 
-Minimum outputs:
+Implemented outputs:
 
-- `feature_table.parquet`
-- `splits.tsv`
-- `metrics.tsv`
-- `predictions.tsv`
-- `run_manifest.json`
+- `benchmark_metrics`
+- `benchmark_predictions`
+- `benchmark_folds`
+- `benchmark_leakage_checks`
+- `benchmark_feature_sets`
+- `benchmark_ablation_results`
+- `benchmark_null_results`
+- `benchmark_permutation_tests`
+- `benchmark_manifest.json`
+- `benchmark_report.md`
 
-First candidate tasks:
+Registered study protocols:
 
-- coding versus noncoding toy benchmark
-- small viral or bacterial taxonomy benchmark
-- CDS codon-bias clustering benchmark
+- `datasets/coding_noncoding`
+- `datasets/taxonomy`
+- `datasets/mutation_effect`
 
-Required metrics:
+Next improvements:
 
-- accuracy and macro-F1 for multiclass classification
-- AUROC/AUPRC for binary tasks where labels support them
-- ARI/NMI for clustering tasks
-- runtime and memory summaries
+- Prepare real source FASTA and metadata files from pinned public releases.
+- Record input hashes in each dataset manifest.
+- Commit fold assignments or regenerate them deterministically from the
+  benchmark manifests.
+- Add runtime and memory summaries to benchmark reports.
+- Add external validation manifests after the development dataset is frozen.
 
 ## Phase 4: Codon And Matrix-Genetics Rigor
 

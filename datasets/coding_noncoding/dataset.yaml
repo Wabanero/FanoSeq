@@ -1,0 +1,64 @@
+dataset_id: coding-noncoding-v1
+title: Coding versus noncoding DNA windows
+status: source_release_selected
+benchmark: A
+purpose: >
+  Validate DNA-window and codon features, then test whether Fano-structured
+  interactions add information beyond composition, k-mers, FCGR, polynomial
+  interactions, and antisymmetric interaction controls.
+source:
+  name: GENCODE Human Release 50
+  accession: GRCh38.p14 comprehensive gene annotation and transcript FASTA
+  version: "50"
+  citation: >
+    Mudge JM et al. GENCODE 2025: reference gene annotation for human and mouse.
+    Nucleic Acids Research 53(D1):D966-D975, 2025.
+  doi: 10.1093/nar/gkae1078
+  license: Open access source data; verify current GENCODE/EMBL-EBI terms before redistribution.
+inputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  fasta_sha256: TBD_AFTER_PREPARE
+  metadata_sha256: TBD_AFTER_PREPARE
+preprocessing:
+  min_length: 200
+  max_length: 2000
+  ambiguity_threshold: 0.0
+  duplicate_policy: remove
+  homology_threshold: 0.8
+  coding_class: protein_coding CDS windows
+  noncoding_class: lncRNA transcript windows matched by length and GC
+  negative_sampling: chromosome-local GC and length bins when possible
+split:
+  strategy: chromosome_grouped
+  group_column: chromosome
+  seed: 42
+confounders:
+  length_matching: true
+  gc_matching: true
+  homology_filtering: true
+  source_database_matching: true
+required_controls:
+  - sequence_length
+  - gc_matching
+  - homology_filtering
+  - kmer
+  - fcgr
+  - raw_eight_descriptors
+  - real_polynomial_control
+  - antisymmetric_control
+  - fanoseq_features
+  - randomized_fano_structure
+external_validation:
+  freeze_after_development: true
+  candidates:
+    - GENCODE mouse current release with chromosome-held-out splits
+    - CHM13/T2T annotation-derived windows
+    - RefSeq transcript-derived coding/noncoding windows
+prepared_outputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  splits: splits.tsv
+notes: >
+  This manifest defines the study and provenance. It is not evidence until
+  prepared files, hashes, fold assignments, and benchmark outputs are generated.

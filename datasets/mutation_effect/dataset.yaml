@@ -1,0 +1,81 @@
+dataset_id: mutation-effect-v1
+title: Controlled coding-sequence perturbation sensitivity
+status: protocol_defined
+benchmark: C
+purpose: >
+  Construct controlled coding-sequence perturbations and test whether FanoSeq
+  representation distances behave sensibly under known biological edit classes,
+  not merely whether a classifier can recover labels.
+source:
+  name: GENCODE Human Release 50 protein-coding transcript sequences
+  accession: GRCh38.p14 protein-coding transcript FASTA
+  version: "50"
+  citation: >
+    Mudge JM et al. GENCODE 2025: reference gene annotation for human and mouse.
+    Nucleic Acids Research 53(D1):D966-D975, 2025.
+  doi: 10.1093/nar/gkae1078
+  license: Open access source data; verify current GENCODE/EMBL-EBI terms before redistribution.
+inputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  fasta_sha256: TBD_AFTER_PREPARE
+  metadata_sha256: TBD_AFTER_PREPARE
+preprocessing:
+  min_length: 300
+  max_length: 3000
+  ambiguity_threshold: 0.0
+  duplicate_policy: remove
+  homology_threshold: 0.8
+  coding_sequence_policy: require_in_frame_acgt_cds
+  generated_perturbations:
+    - synonymous_substitution
+    - transition
+    - transversion
+    - conservative_amino_acid_change
+    - radical_amino_acid_change
+    - premature_stop
+    - frameshift
+split:
+  strategy: parent_cds_grouped
+  group_column: parent_cds_id
+  seed: 42
+confounders:
+  length_matching: true
+  gc_matching: false
+  homology_filtering: true
+  source_database_matching: true
+required_controls:
+  - edit_distance
+  - amino_acid_change_class
+  - codon_usage
+  - kmer
+  - fcgr
+  - raw_eight_descriptors
+  - real_polynomial_control
+  - antisymmetric_control
+  - fanoseq_features
+  - randomized_fano_structure
+distance_expectations:
+  closest:
+    - synonymous_substitution
+  intermediate:
+    - transition
+    - conservative_amino_acid_change
+    - transversion
+  farthest:
+    - radical_amino_acid_change
+    - premature_stop
+    - frameshift
+external_validation:
+  freeze_after_development: true
+  candidates:
+    - GENCODE mouse coding transcripts
+    - RefSeq Select coding transcripts
+    - ClinVar-derived coding variant windows after the synthetic perturbation protocol is frozen
+prepared_outputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  splits: splits.tsv
+notes: >
+  Primary analysis should compare parent-to-perturbation representation
+  distances by perturbation class. Classification is a secondary smoke test.

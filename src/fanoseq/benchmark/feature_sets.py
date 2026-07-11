@@ -52,7 +52,12 @@ FANO_FEATURES = {
     "fanoseq_fingerprints",
 }
 CONVENTIONAL_FEATURES = {"nucleotide_composition", "kmer", "fcgr", "codon_usage"}
-CONTROL_FEATURES = {"real_polynomial_control", "random_projection_control"}
+CONTROL_FEATURES = {
+    "real_polynomial_control",
+    "antisymmetric_control",
+    "randomized_fano_structure",
+    "random_projection_control",
+}
 
 
 def build_feature_bundle(
@@ -192,6 +197,8 @@ def _requested_feature_sets(
         "fcgr": lambda: _fcgr_matrix(baseline_tables),
         "codon_usage": lambda: _codon_usage_matrix(baseline_tables),
         "real_polynomial_control": lambda: _real_polynomial_control(fano_tables),
+        "antisymmetric_control": lambda: _antisymmetric_control(fano_tables),
+        "randomized_fano_structure": lambda: _randomized_fano_structure(config, fano_tables),
         "random_projection_control": lambda: _random_projection_control(
             config,
             dataset,
@@ -493,6 +500,43 @@ def _real_polynomial_control(tables: dict[str, pd.DataFrame]) -> FeatureSet:
     )
 
 
+def _antisymmetric_control(tables: dict[str, pd.DataFrame]) -> FeatureSet:
+    source = tables.get("window_octonions", pd.DataFrame())
+    matrix = _antisymmetric_pair_summaries(source, prefix="antisymmetric")
+    return FeatureSet(
+        name="antisymmetric_control",
+        family="control",
+        description=(
+            "Ordinary real-valued antisymmetric adjacent-window interactions "
+            "x_i*y_j - x_j*y_i for imaginary descriptor axes; no Fano orientation."
+        ),
+        matrix=matrix,
+        source_tables=("window_octonions",),
+    )
+
+
+def _randomized_fano_structure(
+    config: BenchmarkConfig,
+    tables: dict[str, pd.DataFrame],
+) -> FeatureSet:
+    source = tables.get("window_octonions", pd.DataFrame())
+    matrix = _randomized_antisymmetric_summaries(
+        source,
+        prefix="random_fano",
+        random_seed=config.evaluation.random_seed,
+    )
+    return FeatureSet(
+        name="randomized_fano_structure",
+        family="control",
+        description=(
+            "Deterministic random projection of antisymmetric interaction terms into "
+            "seven pseudo-Fano channels, matched to Fano-line dimensionality."
+        ),
+        matrix=matrix,
+        source_tables=("window_octonions",),
+    )
+
+
 def _random_projection_control(
     config: BenchmarkConfig,
     dataset: BenchmarkDataset,
@@ -624,6 +668,130 @@ def _align_matrix(matrix: pd.DataFrame, sequence_ids: tuple[str, ...]) -> pd.Dat
 def _effective_window_size(requested: int, dataset: BenchmarkDataset) -> int:
     min_length = min(len(sequence) for sequence in dataset.sequences.values())
     return max(1, min(requested, min_length))
+
+
+def _antisymmetric_pair_summaries(source: pd.DataFrame, *, prefix: str) -> pd.DataFrame:
+    axes = _imaginary_axes(source)
+    pairs = _axis_pairs(axes)
+    rows: list[dict[str, object]] = []
+    for sequence_id, terms in _antisymmetric_terms_by_sequence(source, axes):
+        row: dict[str, object] = {"sequence_id": sequence_id}
+        for pair_index, pair_name in enumerate(pairs):
+            values = terms[:, pair_index] if terms.size else np.asarray([], dtype=float)
+            _add_summary(row, f"{prefix}_{pair_name}", values)
+        rows.append(row)
+    if rows:
+        return pd.DataFrame(rows).fillna(0.0)
+    return pd.DataFrame(columns=["sequence_id"])
+
+
+def _randomized_antisymmetric_summaries(
+    source: pd.DataFrame,
+    *,
+    prefix: str,
+    random_seed: int,
+) -> pd.DataFrame:
+    axes = _imaginary_axes(source)
+    pairs = _axis_pairs(axes)
+    if not pairs:
+        return pd.DataFrame(columns=["sequence_id"])
+    rng = np.random.default_rng(random_seed + 7919)
+    weights = rng.normal(size=(len(pairs), len(axes)))
+    column_norms = np.linalg.norm(weights, axis=0)
+    column_norms[column_norms == 0.0] = 1.0
+    weights = weights / column_norms
+    rows: list[dict[str, object]] = []
+    for sequence_id, terms in _antisymmetric_terms_by_sequence(source, axes):
+        row: dict[str, object] = {"sequence_id": sequence_id}
+        projected = _project_terms(terms, weights)
+        for channel_index, axis in enumerate(axes):
+            _add_summary(row, f"{prefix}_{axis}", projected[:, channel_index])
+        rows.append(row)
+    if rows:
+        return pd.DataFrame(rows).fillna(0.0)
+    return pd.DataFrame(columns=["sequence_id"])
+
+
+def _antisymmetric_terms_by_sequence(
+    source: pd.DataFrame,
+    axes: list[str],
+) -> list[tuple[str, np.ndarray]]:
+    pairs = _axis_pairs(axes)
+    if source.empty or "sequence_id" not in source.columns or not axes or not pairs:
+        return []
+    rows: list[tuple[str, np.ndarray]] = []
+    for sequence_id, group in source.groupby("sequence_id", sort=False):
+        sort_columns = [
+            column for column in ("frame", "position", "start", "end") if column in group.columns
+        ]
+        if sort_columns:
+            group = group.sort_values(sort_columns)
+        values = (
+            group[axes]
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0.0)
+            .to_numpy(dtype=float)
+        )
+        if len(values) < 2:
+            rows.append((str(sequence_id), np.empty((0, len(pairs)))))
+            continue
+        left = values[:-1]
+        right = values[1:]
+        terms = []
+        for left_axis, right_axis in _axis_pair_indices(axes):
+            terms.append(
+                left[:, left_axis] * right[:, right_axis]
+                - left[:, right_axis] * right[:, left_axis]
+            )
+        rows.append((str(sequence_id), np.column_stack(terms)))
+    return rows
+
+
+def _imaginary_axes(source: pd.DataFrame) -> list[str]:
+    return [f"e{index}" for index in range(1, 8) if f"e{index}" in source.columns]
+
+
+def _axis_pairs(axes: list[str]) -> list[str]:
+    return [f"{left}_{right}" for left, right in _axis_pair_labels(axes)]
+
+
+def _axis_pair_labels(axes: list[str]) -> list[tuple[str, str]]:
+    return [
+        (axes[left_index], axes[right_index])
+        for left_index in range(len(axes))
+        for right_index in range(left_index + 1, len(axes))
+    ]
+
+
+def _axis_pair_indices(axes: list[str]) -> list[tuple[int, int]]:
+    return [
+        (left_index, right_index)
+        for left_index in range(len(axes))
+        for right_index in range(left_index + 1, len(axes))
+    ]
+
+
+def _project_terms(terms: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    if terms.size == 0:
+        return np.empty((0, weights.shape[1]))
+    columns = [
+        np.sum(terms * weights[:, channel_index], axis=1)
+        for channel_index in range(weights.shape[1])
+    ]
+    return np.column_stack(columns)
+
+
+def _add_summary(row: dict[str, object], stem: str, values: np.ndarray) -> None:
+    if values.size == 0:
+        row[f"{stem}_mean"] = 0.0
+        row[f"{stem}_std"] = 0.0
+        row[f"{stem}_min"] = 0.0
+        row[f"{stem}_max"] = 0.0
+        return
+    row[f"{stem}_mean"] = float(np.mean(values))
+    row[f"{stem}_std"] = float(np.std(values))
+    row[f"{stem}_min"] = float(np.min(values))
+    row[f"{stem}_max"] = float(np.max(values))
 
 
 def _entropy(values: np.ndarray, *, base: int) -> float:

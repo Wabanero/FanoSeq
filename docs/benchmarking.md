@@ -39,6 +39,8 @@ features:
   - fcgr
   - codon_usage
   - real_polynomial_control
+  - antisymmetric_control
+  - randomized_fano_structure
   - random_projection_control
 
 evaluation:
@@ -66,12 +68,42 @@ The benchmark compares:
 - combined FanoSeq fingerprints;
 - nucleotide composition, k-mer, FCGR, and codon-usage features;
 - real-valued polynomial controls built from the same eight descriptors;
+- ordinary antisymmetric controls built as `x_i*y_j - x_j*y_i` from the same
+  imaginary descriptor axes;
+- randomized Fano-like antisymmetric controls matched to Fano-line
+  dimensionality;
 - random-projection controls matched to the FanoSeq dimensionality.
 
 The real-valued interaction control is important: it contains pairwise products,
 absolute differences, squares, and cubes without Cayley multiplication. This
 distinguishes fixed octonion interactions from a generic nonlinear feature
 expansion.
+
+The decisive Fano comparison is:
+
+```text
+raw descriptors
+-> ordinary polynomial interactions
+-> ordinary antisymmetric interactions
+-> randomized Fano-like structure
+-> fixed FanoSeq octonion/Fano-line interactions
+```
+
+## Dataset Registry
+
+The first curated study protocols live under `datasets/`:
+
+- `coding-noncoding-v1`: GENCODE coding versus noncoding windows with
+  chromosome-held-out splits.
+- `taxonomy-v1`: SILVA SSU Ref NR 99 related-species classification with
+  species/genus-held-out splits.
+- `mutation-effect-v1`: controlled CDS perturbation sensitivity with parent-CDS
+  held-out splits.
+
+The manifests define source release, citation, license notes, preprocessing,
+hash fields, split policy, confounder controls, and expected prepared outputs.
+They are not benchmark evidence until source FASTA/metadata are prepared,
+hashed, and run through `fanoseq benchmark`.
 
 ## Leakage Prevention
 

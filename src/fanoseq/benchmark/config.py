@@ -30,6 +30,8 @@ DEFAULT_FEATURES = (
     "fcgr",
     "codon_usage",
     "real_polynomial_control",
+    "antisymmetric_control",
+    "randomized_fano_structure",
     "random_projection_control",
 )
 

@@ -1,0 +1,72 @@
+dataset_id: taxonomy-v1
+title: Related-species taxonomic classification
+status: source_release_selected
+benchmark: B
+purpose: >
+  Use sequences from multiple related species and hold out entire species or
+  genera. This tests whether FanoSeq learns transferable sequence structure
+  rather than memorizing GC content, repetitive composition, sequencing-source
+  artifacts, or close homologues.
+source:
+  name: SILVA SSU Ref NR 99
+  accession: SILVA SSU Ref NR 99 release 138.2
+  version: "138.2"
+  citation: >
+    Quast C et al. The SILVA ribosomal RNA gene database project: improved data
+    processing and web-based tools. Nucleic Acids Research 41(D1):D590-D596,
+    2013.
+  doi: 10.1093/nar/gks1219
+  license: Verify SILVA release terms before redistribution.
+inputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  fasta_sha256: TBD_AFTER_PREPARE
+  metadata_sha256: TBD_AFTER_PREPARE
+preprocessing:
+  min_length: 200
+  max_length: 2000
+  ambiguity_threshold: 0.0
+  duplicate_policy: remove
+  homology_threshold: 0.8
+  source_filters:
+    - SSU Ref NR 99 representatives
+    - named species only
+    - remove uncultured and environmental labels unless used as a held-out stress test
+split:
+  strategy: genus_or_species_grouped
+  group_column: heldout_taxon
+  seed: 42
+confounders:
+  length_matching: true
+  gc_matching: true
+  homology_filtering: true
+  source_database_matching: true
+required_controls:
+  - species_or_genus_holdout
+  - sequence_length
+  - gc_matching
+  - kmer
+  - fcgr
+  - raw_eight_descriptors
+  - real_polynomial_control
+  - antisymmetric_control
+  - fanoseq_features
+  - randomized_fano_structure
+leakage_risks:
+  - repeated accessions from the same isolate
+  - short identical marker fragments
+  - database taxonomy artifacts
+  - genus names encoded in FASTA descriptions
+external_validation:
+  freeze_after_development: true
+  candidates:
+    - held-out SILVA release newer than 138.2
+    - RefSeq targeted-loci 16S sequences
+    - genus-held-out subset from a different source database
+prepared_outputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  splits: splits.tsv
+notes: >
+  Species/genus labels must come from metadata, not FASTA descriptions, and
+  near-duplicate representatives should be removed before fold assignment.

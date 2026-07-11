@@ -82,6 +82,25 @@ def test_ablation_feature_sets_are_incremental(tmp_path: Path) -> None:
     )
 
 
+def test_antisymmetric_and_randomized_fano_controls_are_available(tmp_path: Path) -> None:
+    config = load_benchmark_config(
+        _write_fixture(
+            tmp_path,
+            features=["antisymmetric_control", "randomized_fano_structure"],
+        )
+    )
+    dataset = load_benchmark_dataset(config.dataset)
+    bundle = build_feature_bundle(config, dataset, tmp_path / "features")
+
+    antisymmetric = bundle.feature_sets["antisymmetric_control"]
+    randomized = bundle.feature_sets["randomized_fano_structure"]
+    assert any(
+        column.startswith("antisymmetric_e1_e2") for column in antisymmetric.feature_columns
+    )
+    assert any(column.startswith("random_fano_e1") for column in randomized.feature_columns)
+    assert len(randomized.feature_columns) < len(antisymmetric.feature_columns)
+
+
 def test_sequence_and_label_null_models_preserve_expected_quantities() -> None:
     rng = np.random.default_rng(7)
     sequence = "ATGATGCCCTTT"
@@ -175,7 +194,12 @@ def test_benchmark_cli_smoke(tmp_path: Path) -> None:
     assert (tmp_path / "cli_run" / "benchmark_metrics.tsv").exists()
 
 
-def _write_fixture(tmp_path: Path, *, output_format: str = "tsv") -> Path:
+def _write_fixture(
+    tmp_path: Path,
+    *,
+    output_format: str = "tsv",
+    features: list[str] | None = None,
+) -> Path:
     metadata = pd.DataFrame(
         {
             "sequence_id": [
@@ -210,7 +234,7 @@ def _write_fixture(tmp_path: Path, *, output_format: str = "tsv") -> Path:
             "task": "classification",
             "seq_type": "dna",
         },
-        "features": ["fanoseq_components", "kmer", "real_polynomial_control"],
+        "features": features or ["fanoseq_components", "kmer", "real_polynomial_control"],
         "feature_extraction": {"window_size": 9, "step": 3, "kmer_k": 2, "frame": 0},
         "evaluation": {
             "outer_folds": 2,

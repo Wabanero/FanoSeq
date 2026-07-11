@@ -107,13 +107,13 @@ Position gates are encoded in e₄ through e₇: position 1 uses e₄, position 
 
 Codon mode is an exploratory codon-level descriptor layer inspired by the idea of treating codons as structured algebraic objects. It is not a replacement for standard codon-usage analysis and does not claim to reproduce or validate any existing hypercomplex genetic-code theory. It should be benchmarked against standard features such as GC3, codon frequency, RSCU, CAI, amino-acid composition, k-mers, and learned embeddings.
 
-The current codon mode is intentionally not Petoukhov-style matrix genetics. It does not arrange the 64 codons in an 8×8 matrix, does not implement dyadic shifts, does not apply Hadamard decompositions, and does not model GF(8) algebra. It is a smaller trajectory descriptor: each observed codon becomes one ordered octonion, adjacent codons become products and commutators, and codon usage is summarized with standard counts, frequencies, RSCU, GC-position features, and octonion summaries.
+Codon mode is separate from the `matrix-genetics` command. Codon mode is a sequence-trajectory descriptor: each observed codon becomes one ordered octonion, adjacent codons become products and commutators, and codon usage is summarized with standard counts, frequencies, RSCU, GC-position features, and octonion summaries. The matrix-genetics command instead summarizes the 64-codon genetic code itself with a canonical 8x8 layout, root degeneracy, Walsh-Hadamard spectra, dyadic-shift diagnostics, and GF(8)-style labels.
 
 ## Relation To Matrix Genetics And Fano-Plane Research Ideas
 
-The current implementation is coherent with the broad idea of using 8-dimensional hypercomplex descriptors for biological sequence data, but it is only a first computational layer. The matrix-genetics direction discussed in the accompanying background document is more specific: it studies 64-codon arrangements, 8×8 codon matrices, dyadic shifts, Hadamard decompositions, strong/weak root symmetry, GF(8)-like encodings, and codon-degeneracy structure. FanoSeq does not yet implement those operations.
+The current implementation is coherent with the broad idea of using 8-dimensional hypercomplex descriptors for biological sequence data, but it is still an exploratory computational layer. FanoSeq now implements a limited `matrix-genetics` command for 64-codon arrangements, a canonical 8x8 codon matrix, dyadic-shift summaries, Walsh-Hadamard spectra, strong/weak root summaries, GF(8)-style labels, and codon-degeneracy structure.
 
-FanoSeq currently contributes a practical extraction engine: FASTA input → window or codon descriptors → octonions → products, commutators, associators, Fano-line attribution, and compact output tables. That makes it suitable for generating exploratory features, but not yet for claiming a matrix-genetic model of the genetic code.
+These tables are implemented analysis outputs, not a claim that FanoSeq reproduces or validates a complete Petoukhov-style matrix-genetic model of the genetic code. The main FASTA workflow remains a practical extraction engine: FASTA input -> window or codon descriptors -> octonions -> products, commutators, associators, Fano-line attribution, and compact output tables.
 
 Useful next steps toward the research directions in the background document include adding benchmark datasets, downstream machine-learning examples, multi-track genomic input, protein-geometry input, and optional octonion-aware neural layers.
 
@@ -127,7 +127,17 @@ FanoSeq follows an evidence-maturity model:
 | Hypercomplex computation and ML | moderate to strong | optional representations, tensor exports, future parameter-efficient layers | experimental modules must be compared with real-valued baselines |
 | Direct octonion bioinformatics | sparse and exploratory | hypothesis-generating descriptors and candidate applications | no biological usefulness claims without public benchmark evidence |
 
-The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md` and `docs/implementation_roadmap.md`.
+The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md`, `docs/scientific_evidence_status.md`, `docs/methods_report.md`, `docs/references.md`, and `docs/implementation_roadmap.md`.
+
+| component | software status | mathematical validation | biological validation |
+| --- | --- | --- | --- |
+| Octonion kernel | stable | validated | not applicable |
+| DNA window encoder | stable | audited | pending |
+| Codon encoder | experimental | audited | pending |
+| Fano-line features | experimental | algebraically validated | pending |
+| Matrix genetics | exploratory | partially validated | not predictive |
+| Benchmark engine | beta | tested | datasets pending |
+| Protein encoder | experimental | partial | unvalidated |
 
 Axis meanings are also versioned. The current DNA window mapping is `dna-window-v1`, and future coding/regulatory/shape mappings are registered separately so Fano-line interpretations remain reproducible. Axis definitions now include formulas, inputs, normalization, missing-data policy, implementation status, and benchmark comparators. See `docs/axis_schemes.md` and `docs/axis_definitions.md`.
 
@@ -150,22 +160,39 @@ complete 64-codon octonion catalog, collision and rank reports, synonymous and
 nonsynonymous codon geometry, mutation-sensitivity summaries, feature-redundancy
 controls, and axis-permutation/automorphism controls.
 
-Current default findings are deliberately modest:
+Current default findings are deliberately modest and evidence-scoped. They were
+verified for FanoSeq v0.1.0 with `dna-window-v1`, `codon-product-v1`,
+standard genetic code, non-normalized codon products, and tolerance `1e-9`.
+Future encoding, scheme, normalization, or genetic-code changes should rerun the
+audit before carrying these statements forward.
 
-1. `dna-window-v1` respects reverse complementation through
-   `diag(1, -1, 1, -1, -1, -1, 1, 1)` for encodable windows.
-2. Products, commutators, associators, and Fano-line profiles do not receive a
-   forced reverse-complement equivariance claim; the audit reports measured
-   residuals and finite-window exceptions.
-3. `codon-product-v1` is injective over the 64 standard DNA codons under the
-   default non-normalized implementation, but synonymous clustering is measured,
-   not assumed.
-4. Fano-line interpretations depend on the biological axis assignment.
-5. Commutators can be equivalent to a structured antisymmetric interaction
-   expansion; real-valued antisymmetric controls are emitted beside octonion
-   features.
-6. Non-associativity is a property of the chosen algebra and association
-   convention, not evidence of a biological mechanism.
+Reproduce the evidence with:
+
+```bash
+fanoseq audit-encoding \
+  --input examples/example_dna.fasta \
+  --seq-type dna \
+  --axis-scheme dna-window-v1 \
+  --checks reverse-complement,permutation,collision,mutation,redundancy,codon \
+  --tolerance 1e-9 \
+  --output-dir results/encoding_audit
+```
+
+Evidence tables:
+
+1. Reverse-complement behavior: `reverse_complement_derivation`,
+   `reverse_complement_transform_matrix`, and `reverse_complement_audit`.
+2. Codon injectivity and geometry: `codon_octonion_catalog`,
+   `codon_collision_report`, `codon_distance_matrix`,
+   `codon_synonymy_statistics`, and `codon_geometry_rank_spectrum`.
+3. Commutator and interaction redundancy:
+   `feature_redundancy` and `feature_rank_spectrum`.
+4. Axis dependence and Fano controls:
+   `axis_permutation_stability` and `fano_automorphism_controls`.
+
+Test coverage for these claims lives in `tests/test_encoding_audit.py`, with
+supporting algebra, DNA, codon, axis-scheme, and pipeline tests in the broader
+suite.
 
 See `docs/encoding_audit.md`, `docs/reverse_complement_behavior.md`,
 `docs/codon_geometry.md`, and `docs/octonion_vs_interaction_features.md`.
@@ -603,23 +630,46 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 
 ## Development Roadmap
 
-- Add benchmark harness driven by manifest files
-- Add curated coding/noncoding or taxonomy benchmark examples
-- Add true FCGR image/tensor export
-- Add iCGR-style compact integer signatures
-- Add benchmarks against k-mer features
-- Add benchmarks against codon-usage features
-- Add PCA/UMAP of window octonions
-- Add learned octonion filters
-- Implement runnable encoders for dna-coding-v1 and dna-regulatory-v1
-- Add JSON/YAML config files
-- Add notebook examples
-- Add HTML reports
-- Add codon-space visualizations
-- Add Fano-line null models and axis-label shuffles
-- Add multi-track bedGraph/BigWig input
-- Add protein geometry encodings from PDB/mmCIF
-- Add optional PyTorch datasets and Fano-triad regularizers
+### Implemented
+
+- Manifest-driven benchmark harness through `fanoseq benchmark`
+- Benchmark controls for composition, k-mer, codon-usage, FCGR-like,
+  real-valued polynomial, antisymmetric, randomized-Fano, and
+  random-projection feature families
+- Dataset registry protocols for coding/noncoding, taxonomy, and controlled
+  mutation-effect studies
+- Encoding audit framework through `fanoseq audit-encoding`
+- Reverse-complement, codon-collision, redundancy, perturbation, axis-shuffle,
+  and automorphism audit tables
+- Matrix-genetics summary tables for canonical 64-codon ordering, 8x8 codon
+  entries, root degeneracy, Walsh-Hadamard spectra, dyadic shifts, and
+  GF(8)-style labels
+
+### In Validation
+
+- Prepared public benchmark datasets with recorded source hashes and fold
+  assignments
+- Empirical interpretation of benchmark effect sizes across datasets
+- Stability of audit findings across genetic-code tables, normalization choices,
+  tolerances, and future axis-scheme versions
+- Codon-space visualizations backed by generated audit tables
+
+### Planned
+
+- True FCGR image/tensor export
+- iCGR-style compact integer signatures
+- PCA/UMAP visual reports for window and codon octonions
+- Broader JSON/YAML configuration for ordinary `fanoseq run` workflows
+- Notebook examples
+- HTML reports
+- Runnable encoders for `dna-coding-v1` and `dna-regulatory-v1`
+
+### Long-Term Research
+
+- Learned octonion filters
+- Multi-track bedGraph/BigWig input
+- Protein geometry encodings from PDB/mmCIF
+- Optional PyTorch datasets and Fano-triad regularizers
 
 ## License
 

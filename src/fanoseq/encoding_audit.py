@@ -31,7 +31,7 @@ from fanoseq.dna_features import (
     encode_dna_window,
     reverse_complement,
 )
-from fanoseq.encodings import ENCODING_REGISTRY, encode_octonion_walk
+from fanoseq.encodings import ENCODING_REGISTRY
 from fanoseq.fano_plane import FANO_LINE_KEYS
 from fanoseq.fasta import FastaRecord, read_fasta
 from fanoseq.genetic_code import GeneticCode, all_standard_codons, get_genetic_code

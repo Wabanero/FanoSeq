@@ -1,0 +1,60 @@
+dataset:
+  table: prepared/metadata.tsv
+  fasta: prepared/sequences.fasta
+  id_column: sequence_id
+  target_column: label
+  group_column: chromosome
+  task: binary_classification
+  seq_type: dna
+
+features:
+  - nucleotide_composition
+  - kmer
+  - fcgr
+  - codon_usage
+  - fanoseq_components
+  - fanoseq_products
+  - fanoseq_commutators
+  - fanoseq_associators
+  - fanoseq_fano_lines
+  - fanoseq_fingerprints
+  - real_polynomial_control
+  - antisymmetric_control
+  - randomized_fano_structure
+  - random_projection_control
+
+feature_extraction:
+  window_size: 120
+  step: 30
+  kmer_k: 4
+  frame: all
+  max_ambiguous_fraction: 0.0
+  window_axis_scheme: dna-window-v1
+  codon_axis_scheme: codon-product-v1
+
+evaluation:
+  outer_folds: 5
+  inner_folds: 3
+  repeats: 3
+  random_seed: 42
+  split_strategy: stratified_group
+  primary_metric: balanced_accuracy
+  models:
+    - logistic_regression
+    - random_forest
+  output_format: parquet
+  sequence_similarity_audit: true
+  sequence_similarity_threshold: 0.8
+  paired_permutation_rounds: 999
+  run_ablations: true
+
+null_models:
+  sequence_nulls:
+    - mononucleotide_shuffle
+    - dinucleotide_preserving_shuffle
+  representation_nulls:
+    - remove_scalar_e0
+    - imaginary_axis_permutation
+    - random_antisymmetric_tensor
+  label_permutations: 99
+  random_seed: 4242

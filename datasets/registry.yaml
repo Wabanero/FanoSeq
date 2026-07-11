@@ -1,0 +1,40 @@
+registry_version: 0.1.0
+created_utc: "2026-07-12T00:00:00Z"
+status: benchmark_protocols_defined_data_not_vendored
+policy: >
+  Public source datasets are not committed to this repository. Each study
+  directory records source provenance, preprocessing controls, split strategy,
+  and the expected prepared FASTA/metadata files. Curators must run the local
+  prepare script, record input hashes, and commit only small manifests unless
+  source licenses permit redistribution.
+studies:
+  - dataset_id: coding-noncoding-v1
+    title: Coding versus noncoding DNA windows
+    path: coding_noncoding/dataset.yaml
+    benchmark_config: coding_noncoding/benchmark.yaml
+    status: source_release_selected
+    primary_holdout: chromosome
+    purpose: >
+      Test whether FanoSeq window and codon features improve coding/noncoding
+      classification beyond length, GC, k-mer, FCGR, ordinary polynomial, and
+      antisymmetric controls.
+  - dataset_id: taxonomy-v1
+    title: Related-species taxonomic classification
+    path: taxonomy/dataset.yaml
+    benchmark_config: taxonomy/benchmark.yaml
+    status: source_release_selected
+    primary_holdout: genus_or_species
+    purpose: >
+      Test whether sequence representations transfer across held-out taxa rather
+      than memorizing species-specific composition, repeats, source artifacts, or
+      close homologues.
+  - dataset_id: mutation-effect-v1
+    title: Controlled coding-sequence perturbation sensitivity
+    path: mutation_effect/dataset.yaml
+    benchmark_config: mutation_effect/benchmark.yaml
+    status: protocol_defined
+    primary_holdout: parent_cds
+    purpose: >
+      Test whether representation distances respond monotonically and
+      biologically sensibly to synonymous, transition, transversion,
+      conservative, radical, stop-gain, and frameshift perturbations.
