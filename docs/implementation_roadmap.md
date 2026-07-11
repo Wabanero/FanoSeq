@@ -96,12 +96,19 @@ Next improvements:
 - Compare Fano/codon matrix features against codon usage, GC3, RSCU, and CAI.
 - Add wobble-equivalence and synonymous-family perturbation tests.
 
-## Phase 5: Fano Triads And Hypergraphs
+## Phase 5: Fano Plane, Triads, And Hypergraphs
 
-Status: first triad-count command implemented.
+Status: explicit Fano-plane object and first triad-count command implemented.
 
 Implemented:
 
+- `fanoseq fano-plane`
+- `fanoseq plot-fano-plane`
+- `fanoseq fano-features`
+- `fanoseq fano-stability`
+- Fano-plane point, line, incidence, and pair-product tables
+- Fano-line feature summaries for downstream fingerprints
+- bootstrap stability summaries for dominant Fano-line profiles
 - `fanoseq fano-triads`
 - DNA and protein symbolic axis maps
 - Fano-line triad counts
@@ -111,6 +118,7 @@ Next improvements:
 - Add shuffled null models.
 - Add enrichment scores and empirical p-values.
 - Export NetworkX/hypergraph-ready edge tables.
+- Add axis-label shuffle ablations for Fano-line feature families.
 - Prototype regulatory or chromatin triads only with a curated dataset.
 
 ## Phase 6: Protein Geometry

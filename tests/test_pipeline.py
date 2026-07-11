@@ -23,6 +23,7 @@ def test_pipeline_window_modes_on_examples(tmp_path: Path) -> None:
         "octonion_products.tsv",
         "octonion_triplets.tsv",
         "fano_interactions.tsv",
+        "fano_line_features.tsv",
         "sequence_fingerprints.tsv",
     ):
         assert (dna_out / filename).exists()
@@ -31,6 +32,7 @@ def test_pipeline_window_modes_on_examples(tmp_path: Path) -> None:
     assert outputs["window_octonions.tsv"]["axis_scheme_id"].eq("dna-window-v1").all()
     assert "line_label" in outputs["fano_interactions.tsv"].columns
     assert "window_n_windows" in outputs["sequence_fingerprints.tsv"].columns
+    assert "fano_fano_line_entropy_mean" in outputs["sequence_fingerprints.tsv"].columns
     assert len(outputs["fano_interactions.tsv"]) == 7 * len(outputs["octonion_products.tsv"])
 
     protein_out = tmp_path / "protein_windows"
@@ -66,6 +68,7 @@ def test_pipeline_codon_and_both_modes_on_examples(tmp_path: Path) -> None:
         "codon_usage_fano_features.tsv",
         "codon_usage_sequence_summary.tsv",
         "fano_interactions.tsv",
+        "fano_line_features.tsv",
     ):
         assert (codon_out / filename).exists()
         assert filename in codon_outputs
@@ -211,6 +214,7 @@ def test_summary_only_and_top_k_transitions(tmp_path: Path) -> None:
         )
     )
     assert "window_sequence_summary.tsv" in summary_outputs
+    assert "fano_line_features.tsv" in summary_outputs
     assert (summary_dir / "window_sequence_summary.tsv").exists()
     assert not (summary_dir / "window_octonions.tsv").exists()
 

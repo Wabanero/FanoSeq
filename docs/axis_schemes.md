@@ -6,6 +6,9 @@ the interpretation of e1...e7 depends on an explicit, versioned axis scheme.
 The concrete formulas and missing-data policies for each axis are documented in
 `docs/axis_definitions.md` and exported by the CLI.
 
+The Fano plane itself is exported separately as point, line, incidence, and
+pair-product tables. See `docs/fano_plane.md`.
+
 This avoids a common mistake: an eight-dimensional feature vector is not
 automatically a biologically meaningful octonion. It becomes interpretable only
 when the axis mapping, scalar role, and Fano-line semantics are declared.

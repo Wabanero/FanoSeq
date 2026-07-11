@@ -32,6 +32,12 @@ from fanoseq.encodings import (
 )
 from fanoseq.fasta import read_fasta
 from fanoseq.fano_motifs import amino_acid_axis_map, dna_base_axis_map, fano_triad_counts
+from fanoseq.fano_plane import (
+    build_fano_line_features,
+    build_fano_line_stability,
+    fano_plane_tables,
+    plot_fano_plane,
+)
 from fanoseq.genetic_code import get_genetic_code
 from fanoseq.io import write_outputs
 from fanoseq.matrix_genetics import build_matrix_genetics_tables
@@ -282,6 +288,162 @@ def validate_axis_schemes(
     except Exception as exc:
         console.print(f"[red]FanoSeq error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
+
+
+@app.command("fano-plane")
+def fano_plane_command(
+    axis_scheme_id: Optional[str] = typer.Option(
+        None,
+        "--axis-scheme",
+        help="Optional axis scheme id for biological/computational labels.",
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional directory for Fano-plane point, line, incidence, and pair tables.",
+    ),
+    output_format: str = typer.Option(
+        "tsv",
+        "--output-format",
+        help="Output storage format when --output-dir is supplied.",
+    ),
+) -> None:
+    """Describe the Fano plane as an explicit object."""
+    try:
+        tables = fano_plane_tables(axis_scheme_id)
+        console.print(
+            f"[bold]Fano plane[/bold] ({axis_scheme_id or 'basis'})\n\n"
+            f"[bold]Lines[/bold]\n"
+            f"{tables['fano_plane_lines'][['fano_line', 'line_label', 'orientation_rule']].to_string(index=False)}\n\n"
+            f"[bold]Points[/bold]\n"
+            f"{tables['fano_plane_points'][['symbol', 'axis_label', 'degree']].to_string(index=False)}"
+        )
+        if output_dir is not None:
+            written = write_outputs(
+                tables,
+                output_dir,
+                output_format.lower(),  # type: ignore[arg-type]
+                manifest={
+                    "format": "fanoseq-fano-plane",
+                    "axis_scheme_id": axis_scheme_id or "basis",
+                    "schema_version": "0.7.0",
+                },
+            )
+            console.print(
+                f"[green]FanoSeq wrote {len(written)} Fano-plane table(s) to {output_dir}[/green]"
+            )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("plot-fano-plane")
+def plot_fano_plane_command(
+    output_path: Path = typer.Option(..., "--output", help="Output PNG path."),
+    axis_scheme_id: Optional[str] = typer.Option(
+        None,
+        "--axis-scheme",
+        help="Optional axis scheme id for labels.",
+    ),
+    size: int = typer.Option(1200, "--size", help="Image size in pixels."),
+) -> None:
+    """Draw a true seven-point/seven-line Fano-plane PNG."""
+    try:
+        path = plot_fano_plane(output_path, axis_scheme_id=axis_scheme_id, size=size)
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]FanoSeq wrote Fano-plane plot to {path}[/green]")
+
+
+@app.command("fano-features")
+def fano_features_command(
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for Fano-line features."),
+    interactions_path: Optional[Path] = typer.Option(
+        None,
+        "--interactions",
+        help="Path to fano_interactions TSV/CSV/Parquet.",
+    ),
+    input_dir: Optional[Path] = typer.Option(
+        None,
+        "--input-dir",
+        help="FanoSeq output directory containing fano_interactions.",
+    ),
+    output_format: str = typer.Option(
+        "tsv",
+        "--output-format",
+        help="Output storage format: tsv, parquet, or bundle.",
+    ),
+) -> None:
+    """Build Fano-line profile features from attribution rows."""
+    try:
+        interactions = _read_fano_interactions(interactions_path, input_dir)
+        features = build_fano_line_features(interactions)
+        written = write_outputs(
+            {"fano_line_features": features},
+            output_dir,
+            output_format.lower(),  # type: ignore[arg-type]
+            manifest={
+                "format": "fanoseq-fano-features",
+                "schema_version": "0.7.0",
+                "interactions_path": str(interactions_path) if interactions_path else None,
+                "input_dir": str(input_dir) if input_dir else None,
+            },
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]FanoSeq wrote {len(written)} Fano feature table(s) to {output_dir}[/green]")
+
+
+@app.command("fano-stability")
+def fano_stability_command(
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for Fano-line stability."),
+    interactions_path: Optional[Path] = typer.Option(
+        None,
+        "--interactions",
+        help="Path to fano_interactions TSV/CSV/Parquet.",
+    ),
+    input_dir: Optional[Path] = typer.Option(
+        None,
+        "--input-dir",
+        help="FanoSeq output directory containing fano_interactions.",
+    ),
+    n_bootstrap: int = typer.Option(100, "--n-bootstrap", help="Bootstrap resamples per group."),
+    random_seed: int = typer.Option(0, "--random-seed", help="Deterministic bootstrap seed."),
+    output_format: str = typer.Option(
+        "tsv",
+        "--output-format",
+        help="Output storage format: tsv, parquet, or bundle.",
+    ),
+) -> None:
+    """Bootstrap dominant Fano-line profile stability."""
+    try:
+        interactions = _read_fano_interactions(interactions_path, input_dir)
+        stability = build_fano_line_stability(
+            interactions,
+            n_bootstrap=n_bootstrap,
+            random_seed=random_seed,
+        )
+        written = write_outputs(
+            {"fano_line_stability": stability},
+            output_dir,
+            output_format.lower(),  # type: ignore[arg-type]
+            manifest={
+                "format": "fanoseq-fano-stability",
+                "schema_version": "0.7.0",
+                "interactions_path": str(interactions_path) if interactions_path else None,
+                "input_dir": str(input_dir) if input_dir else None,
+                "n_bootstrap": n_bootstrap,
+                "random_seed": random_seed,
+            },
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[green]FanoSeq wrote {len(written)} Fano stability table(s) to {output_dir}[/green]"
+    )
 
 
 @app.command("validate-basis")
@@ -623,6 +785,23 @@ def fano_triads(
         console.print(f"[red]FanoSeq error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(f"[green]FanoSeq wrote {len(written)} Fano-triad table(s) to {output_dir}[/green]")
+
+
+def _read_fano_interactions(
+    interactions_path: Path | None,
+    input_dir: Path | None,
+) -> pd.DataFrame:
+    if interactions_path is not None:
+        return read_table(interactions_path)
+    if input_dir is None:
+        raise ValueError("Provide either --interactions or --input-dir.")
+    for candidate in (
+        input_dir / "fano_interactions.tsv",
+        input_dir / "fano_interactions.parquet",
+    ):
+        if candidate.exists():
+            return read_table(candidate)
+    raise FileNotFoundError(f"No fano_interactions table found in {input_dir}.")
 
 
 if __name__ == "__main__":

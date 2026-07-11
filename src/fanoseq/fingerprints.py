@@ -74,6 +74,24 @@ def build_sequence_fingerprints(tables: dict[str, pd.DataFrame]) -> pd.DataFrame
         )
         frames.append(usage_fp)
 
+    fano_lines = tables.get("fano_line_features")
+    if fano_lines is not None and not fano_lines.empty:
+        numeric = fano_lines.select_dtypes(include=["number"]).columns.tolist()
+        numeric = [column for column in numeric if column != "frame"]
+        if numeric:
+            aggregated = (
+                fano_lines.groupby("sequence_id", sort=False)[numeric]
+                .agg(["mean", "max"])
+                .reset_index()
+            )
+            aggregated.columns = [
+                "sequence_id"
+                if column[0] == "sequence_id"
+                else f"fano_{column[0]}_{column[1]}"
+                for column in aggregated.columns
+            ]
+            frames.append(aggregated)
+
     if not frames:
         return pd.DataFrame(columns=["sequence_id"])
 

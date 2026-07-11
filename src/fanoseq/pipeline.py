@@ -15,6 +15,7 @@ from fanoseq.axis_schemes import resolve_axis_scheme
 from fanoseq.codon_features import codon_entropy, encode_codon, iter_codons
 from fanoseq.dna_features import encode_dna_window
 from fanoseq.fano_attribution import fano_line_attribution
+from fanoseq.fano_plane import build_fano_line_features
 from fanoseq.fasta import read_fasta
 from fanoseq.fingerprints import build_sequence_fingerprints
 from fanoseq.genetic_code import GeneticCode, all_standard_codons, get_genetic_code
@@ -273,11 +274,11 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
             window_axis_scheme_id,
         )
         tables["window_sequence_summary"] = window_summary_df
+        fano_rows.extend(product_fano)
         if not config.summary_only:
             tables["window_octonions"] = window_df
             tables["octonion_products"] = product_df
             tables["octonion_triplets"] = triplet_df
-            fano_rows.extend(product_fano)
 
     if config.mode in {"codon", "both"}:
         codon_scheme = resolve_axis_scheme(
@@ -297,14 +298,17 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
         summary_df = build_codon_summary(codon_df, codon_product_df, codon_axis_scheme_id)
         tables["codon_usage_fano_features"] = usage_df
         tables["codon_usage_sequence_summary"] = summary_df
+        fano_rows.extend(codon_fano)
         if not config.summary_only:
             tables["codon_octonions"] = codon_df
             tables["codon_transition_products"] = codon_product_df
-            fano_rows.extend(codon_fano)
 
     fano_df = pd.DataFrame(fano_rows)
     if not fano_df.empty and "frame" in fano_df.columns:
         fano_df["frame"] = fano_df["frame"].astype(str)
+    fano_feature_df = build_fano_line_features(fano_df) if not fano_df.empty else pd.DataFrame()
+    if not fano_feature_df.empty:
+        tables["fano_line_features"] = fano_feature_df
     if not config.summary_only:
         if not fano_df.empty:
             tables["fano_interactions"] = fano_df

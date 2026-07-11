@@ -141,6 +141,7 @@ FanoSeq now separates implemented tooling from research directions that still re
 | Matrix-genetics exploration | canonical 64-codon ordering, 8×8 codon matrix entries, root degeneracy, Hadamard spectra, dyadic-shift summaries, GF(8)-style labels |
 | Codon algebra and wobble analysis | ordered codon octonions, RSCU, GC1/GC2/GC3, synonymous-family size, codon embedding initializer |
 | Order-sensitive k-mer encoding | octonion-walk command using left-associated products over DNA k-mers |
+| Explicit Fano-plane analysis | Fano-plane point/line/incidence/pair tables, PNG Fano-plane plot, Fano-line feature summaries, bootstrap stability |
 | Fano-plane motif exploration | Fano-line triad counts for DNA bases or protein residue groups |
 | Sequence comparison | merged sequence fingerprints, pairwise distance matrices, nearest-neighbor tables |
 | AI-ready exports | NPZ tensor export shaped as [N, 8, L] from component tables |
@@ -191,6 +192,18 @@ Validate all registered axis definitions:
 
 ```bash
 fanoseq validate-axis-schemes
+```
+
+Export the Fano plane as an explicit object:
+
+```bash
+fanoseq fano-plane --axis-scheme dna-window-v1 --output-dir results/fano_plane
+```
+
+Draw the Fano plane with axis labels:
+
+```bash
+fanoseq plot-fano-plane --axis-scheme dna-window-v1 --output results/fano_plane.png
 ```
 
 Select an implemented axis scheme during a run:
@@ -246,6 +259,17 @@ This captures only imaginary-imaginary terms from the Fano line. Scalar-imaginar
 The line labels depend on mode. DNA window mode labels include purine/pyrimidine balance, GC/AT balance, amino/keto balance, GC skew, AT skew, k-mer entropy, and reverse-complement symmetry. Protein mode labels include hydrophobicity, charge, polarity, aromaticity, volume, disorder/flexibility, and low-complexity. Codon mode labels include base RY, SW, MK, position gates, and wobble-position marker.
 
 These line attributions are mathematical decompositions of the chosen octonion product. They are not direct biological causal mechanisms.
+
+## Fano Plane Object
+
+FanoSeq can export the Fano plane itself as point, line, incidence, and pair-product tables. The pair table records ordered imaginary-axis products such as `e1*e2=+e3` and `e2*e1=-e3`, while the incidence table records the three Fano lines touching each axis. See `docs/fano_plane.md`.
+
+FanoSeq also builds `fano_line_features` from attribution rows. These features summarize line-level contribution sums, means, maxima, shares, entropy, dominant line, and incident-axis load. They are added to `sequence_fingerprints` for downstream comparison.
+
+```bash
+fanoseq fano-features --input-dir results/example_dna_windows --output-dir results/example_dna_fano_features
+fanoseq fano-stability --input-dir results/example_dna_windows --output-dir results/example_dna_fano_stability --n-bootstrap 100
+```
 
 ## Installation
 
@@ -444,6 +468,10 @@ sequence_id  mode    axis_scheme_id  position  fano_line  line_label            
 seq1         window  dna-window-v1    0         (1,2,3)    base chemistry triad  purine/pyrimidine balance    0.250000
 ```
 
+`fano_line_features.tsv` summarizes Fano-line profiles per sequence/mode/frame. It includes line shares, dominant line, normalized line entropy, and incident-axis load features.
+
+`fano_plane_points.tsv`, `fano_plane_lines.tsv`, `fano_plane_incidence.tsv`, and `fano_plane_pairs.tsv` are written by `fanoseq fano-plane` when an explicit Fano-plane export is requested.
+
 ## Interpretation Guide
 
 High `transition_score` means adjacent windows or codons have a strong directional, non-commutative change in octonion space.
@@ -537,8 +565,7 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 - Add notebook examples
 - Add HTML reports
 - Add codon-space visualizations
-- Add Fano-line heatmaps
-- Add sequence-level Fano interaction fingerprints
+- Add Fano-line null models and axis-label shuffles
 - Add multi-track bedGraph/BigWig input
 - Add protein geometry encodings from PDB/mmCIF
 - Add optional PyTorch datasets and Fano-triad regularizers
