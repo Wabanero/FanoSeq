@@ -8,48 +8,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from fanoseq.axis_schemes import axis_labels_for_context
 from fanoseq.octonion import FANO_LINES
-
-DNA_AXIS_LABELS = {
-    1: "purine/pyrimidine balance",
-    2: "GC/AT balance",
-    3: "amino/keto balance",
-    4: "GC skew",
-    5: "AT skew",
-    6: "k-mer entropy",
-    7: "reverse-complement symmetry",
-}
-
-PROTEIN_AXIS_LABELS = {
-    1: "hydrophobicity",
-    2: "net charge",
-    3: "polarity",
-    4: "aromaticity",
-    5: "residue volume",
-    6: "disorder/flexibility proxy",
-    7: "repeat/low-complexity score",
-}
-
-CODON_AXIS_LABELS = {
-    1: "base RY property",
-    2: "base SW property",
-    3: "base MK property",
-    4: "position-1 gate",
-    5: "position-2 gate",
-    6: "position-3 gate",
-    7: "wobble-position marker",
-}
 
 
 def axis_labels(mode: str, seq_type: str) -> dict[int, str]:
     """Return axis labels for a mode and sequence type."""
-    if mode == "codon":
-        return CODON_AXIS_LABELS
-    if seq_type == "dna":
-        return DNA_AXIS_LABELS
-    if seq_type == "protein":
-        return PROTEIN_AXIS_LABELS
-    raise ValueError(f"Unsupported seq_type for Fano attribution: {seq_type}")
+    return axis_labels_for_context(seq_type=seq_type, mode=mode)
 
 
 def fano_line_attribution(
@@ -102,4 +67,3 @@ def fano_line_attribution(
             }
         )
     return rows
-

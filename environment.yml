@@ -26,6 +26,7 @@ dependencies:
   - ipykernel
   - typer
   - rich
+  - pillow
   - pytest
   - ruff
   - mypy

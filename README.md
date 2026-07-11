@@ -129,6 +129,8 @@ FanoSeq follows an evidence-maturity model:
 
 The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md` and `docs/implementation_roadmap.md`.
 
+Axis meanings are also versioned. The current DNA window mapping is `dna-window-v1`, and future coding/regulatory/shape mappings are registered separately so Fano-line interpretations remain reproducible. See `docs/axis_schemes.md`.
+
 ## Application Map
 
 FanoSeq now separates implemented tooling from research directions that still require validation.
@@ -165,6 +167,18 @@ List the registry:
 
 ```bash
 fanoseq list-encodings
+```
+
+List versioned axis schemes:
+
+```bash
+fanoseq list-axis-schemes
+```
+
+Describe the current DNA window axis scheme and its Fano-line semantics:
+
+```bash
+fanoseq describe-axis-scheme dna-window-v1
 ```
 
 Write an order-sensitive k-mer walk table:
@@ -321,6 +335,12 @@ Fano-line triad counts:
 fanoseq fano-triads --input examples/example_protein.fasta --seq-type protein --output-dir results/example_protein_triads
 ```
 
+Multipanel diagnostic plot from a FanoSeq output directory:
+
+```bash
+fanoseq plot-multipanel --input-dir results/example_dna_full --output results/example_dna_full/fanoseq_multipanel.png --mode window
+```
+
 ## Output Files
 
 FanoSeq supports three output formats:
@@ -362,6 +382,8 @@ The manifest stores schema version, input hash, run configuration, output table 
 `basis_validation.tsv` reports exact algebra checks for the FanoSeq basis convention. `basis_multiplication_table.tsv` lists every e_i e_j product, and `structure_constants.tsv` gives nonzero A[i,j,k] coefficients for tensor/layer implementations.
 
 `baseline_sequence_features.tsv`, `baseline_kmer_frequencies.tsv`, `baseline_kmer_feature_matrix.tsv`, and `baseline_codon_usage.tsv` provide mature comparator features for DNA benchmark studies. Protein baseline runs write sequence, residue-composition, and amino-acid k-mer tables.
+
+`fanoseq_multipanel.png` is an optional diagnostic figure created by `fanoseq plot-multipanel`. Window plots include octonion component trajectories, descriptor tracks, transition and associator scores, Fano-line contribution heatmaps, top Fano lines, and a run summary. Codon plots use codon-index trajectories, codon descriptors, transition scores, Fano-line heatmaps, codon-usage summaries, and a run summary.
 
 `window_octonions.tsv` or `.parquet` contains one row per sequence window with auxiliary descriptors and `e0...e7` components.
 
@@ -474,6 +496,8 @@ UMAP, statsmodels, NetworkX, matplotlib, and seaborn are included for explorator
 
 Zarr and h5py are included for tensor-oriented downstream storage.
 
+Pillow is used for stable headless PNG multipanel reports.
+
 PyYAML supports future configuration files, and tqdm supports progress reporting in larger runs.
 
 Typer and Rich provide the command-line interface and readable console output.
@@ -488,7 +512,6 @@ Pytest, Ruff, and MyPy support tests, linting, and type checking.
 - Add iCGR-style compact integer signatures
 - Add benchmarks against k-mer features
 - Add benchmarks against codon-usage features
-- Add plotting
 - Add PCA/UMAP of window octonions
 - Add learned octonion filters
 - Add configurable axis definitions

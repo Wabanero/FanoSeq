@@ -16,6 +16,7 @@ from fanoseq.algebra import (
     validation_passed,
     validation_report,
 )
+from fanoseq.axis_schemes import axis_scheme_tables, get_axis_scheme, list_axis_schemes
 from fanoseq.baselines import build_baseline_tables
 from fanoseq.distances import build_distance_matrix, build_neighbor_table
 from fanoseq.encodings import (
@@ -29,6 +30,7 @@ from fanoseq.genetic_code import get_genetic_code
 from fanoseq.io import write_outputs
 from fanoseq.matrix_genetics import build_matrix_genetics_tables
 from fanoseq.pipeline import RunConfig, run_analysis
+from fanoseq.plots import plot_multipanel
 from fanoseq.tensor_export import read_table, write_tensor_npz
 
 app = typer.Typer(help="FanoSeq: sequence trajectories in Fano-structured octonion space.")
@@ -133,6 +135,53 @@ def list_encodings() -> None:
     """List implemented octonion encoding schemes."""
     table = list_encoding_specs()
     console.print(table.to_string(index=False))
+
+
+@app.command("list-axis-schemes")
+def list_axis_schemes_command() -> None:
+    """List versioned biological/computational axis schemes."""
+    table = list_axis_schemes()
+    console.print(table.to_string(index=False))
+
+
+@app.command("describe-axis-scheme")
+def describe_axis_scheme(
+    scheme_id: str = typer.Argument(..., help="Axis scheme id, for example dna-window-v1."),
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output-dir", help="Optional directory for axis-scheme tables."
+    ),
+    output_format: str = typer.Option(
+        "tsv", "--output-format", help="Output storage format when --output-dir is supplied."
+    ),
+) -> None:
+    """Describe one axis scheme and its Fano-line semantics."""
+    try:
+        scheme = get_axis_scheme(scheme_id)
+        tables = axis_scheme_tables(scheme_id)
+        console.print(
+            f"[bold]{scheme.scheme_id}[/bold] ({scheme.status}, {scheme.representation})\n"
+            f"{scheme.recommended_use}\n\n"
+            f"[bold]Axes[/bold]\n{tables['axis_scheme_axes'].to_string(index=False)}\n\n"
+            f"[bold]Fano lines[/bold]\n"
+            f"{tables['axis_scheme_fano_lines'][['fano_line', 'line_label']].to_string(index=False)}"
+        )
+        if output_dir is not None:
+            written = write_outputs(
+                tables,
+                output_dir,
+                output_format.lower(),  # type: ignore[arg-type]
+                manifest={
+                    "format": "fanoseq-axis-scheme",
+                    "scheme_id": scheme.scheme_id,
+                    "schema_version": "0.5.0",
+                },
+            )
+            console.print(
+                f"[green]FanoSeq wrote {len(written)} axis-scheme table(s) to {output_dir}[/green]"
+            )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("validate-basis")
@@ -399,6 +448,37 @@ def distances(
         console.print(f"[red]FanoSeq error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(f"[green]FanoSeq wrote {len(written)} distance table(s) to {output_dir}[/green]")
+
+
+@app.command("plot-multipanel")
+def plot_multipanel_command(
+    input_dir: Path = typer.Option(
+        ..., "--input-dir", help="Directory containing FanoSeq output tables."
+    ),
+    output_path: Path = typer.Option(..., "--output", help="Output PNG path."),
+    mode: str = typer.Option("auto", "--mode", help="Plot mode: auto, window, or codon."),
+    sequence_id: Optional[str] = typer.Option(
+        None, "--sequence-id", help="Sequence ID to plot. Defaults to the first sequence."
+    ),
+    frame: Optional[int] = typer.Option(None, "--frame", help="Codon frame for codon plots."),
+    max_points: int = typer.Option(
+        500, "--max-points", help="Maximum trajectory points to draw in line panels."
+    ),
+) -> None:
+    """Create a PNG multipanel summary from FanoSeq output tables."""
+    try:
+        path = plot_multipanel(
+            input_dir,
+            output_path,
+            mode=mode.lower(),  # type: ignore[arg-type]
+            sequence_id=sequence_id,
+            frame=frame,
+            max_points=max_points,
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]FanoSeq wrote multipanel plot to {path}[/green]")
 
 
 @app.command("fano-triads")
