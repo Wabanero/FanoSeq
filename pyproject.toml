@@ -9,7 +9,7 @@ description = "Sequence trajectories in Fano-structured octonion space"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "FanoSeq contributors" }]
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 dependencies = [
     "numpy",
     "pandas",
