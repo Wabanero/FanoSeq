@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Self
+from typing import Iterable
 
 import numpy as np
 from numpy.typing import NDArray
+from typing_extensions import Self
 
 FANO_LINES: tuple[tuple[int, int, int], ...] = (
     (1, 2, 3),
