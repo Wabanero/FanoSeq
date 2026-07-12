@@ -50,6 +50,7 @@ from fanoseq.matrix_genetics import build_matrix_genetics_tables
 from fanoseq.pipeline import RunConfig, run_analysis
 from fanoseq.plots import plot_multipanel
 from fanoseq.tensor_export import read_table, write_tensor_npz
+from fanoseq.workflow import CompleteAnalysisConfig, run_complete_analysis
 
 app = typer.Typer(help="FanoSeq: sequence trajectories in Fano-structured octonion space.")
 console = Console()
@@ -175,6 +176,54 @@ def run(
 
     console.print(
         f"[green]FanoSeq wrote {len(outputs)} {output_format.lower()} table(s) to {output_dir}[/green]"
+    )
+
+
+@app.command("analyze")
+def analyze(
+    input_path: Path = typer.Option(..., "--input", "-i", help="FASTA used by all workflows."),
+    benchmark_config: Path = typer.Option(
+        ...,
+        "--benchmark-config",
+        help="Benchmark manifest whose dataset.fasta must match --input.",
+    ),
+    output_dir: Path = typer.Option(..., "--output-dir", help="Root directory for all outputs."),
+    seq_type: str = typer.Option("dna", "--seq-type", help="Either 'dna' or 'protein'."),
+    window_size: int = typer.Option(10, "--window-size", help="Sliding-window size."),
+    step: int = typer.Option(1, "--step", help="Sliding-window step size."),
+    kmer_k: int = typer.Option(2, "--kmer-k", help="k for k-mer entropy descriptors."),
+    audit_permutation_samples: int = typer.Option(
+        16,
+        "--audit-permutation-samples",
+        help="Axis controls sampled by the encoding audit.",
+    ),
+    audit_max_perturbations: int = typer.Option(
+        200,
+        "--audit-max-perturbations",
+        help="Maximum sequence perturbations scored by the audit.",
+    ),
+) -> None:
+    """Run pipeline, benchmark, and encoding audit in one organized output tree."""
+    try:
+        outputs = run_complete_analysis(
+            CompleteAnalysisConfig(
+                input_path=input_path,
+                benchmark_config=benchmark_config,
+                output_dir=output_dir,
+                seq_type=seq_type.lower(),
+                window_size=window_size,
+                step=step,
+                kmer_k=kmer_k,
+                audit_permutation_samples=audit_permutation_samples,
+                audit_max_perturbations=audit_max_perturbations,
+            )
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[green]FanoSeq complete analysis wrote pipeline/, benchmark/, audit/, "
+        f"and {len(outputs)} main files to {output_dir}.[/green]"
     )
 
 

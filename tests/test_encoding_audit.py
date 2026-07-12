@@ -13,6 +13,7 @@ from fanoseq.encoding_audit import (
     build_feature_redundancy_tables,
     dinucleotide_preserving_shuffle,
     dna_perturbations,
+    plot_encoding_audit_outputs,
     synonymous_recoding,
     transform_octonion_rc,
     translate_dna,
@@ -137,3 +138,7 @@ def test_encoding_audit_table_schemas(tmp_path: Path) -> None:
         assert {"software_version", "schema_version", "input_hash", "tolerance"}.issubset(
             tables[table].columns
         )
+    plot_paths = plot_encoding_audit_outputs(tables, tmp_path / "plots")
+    multipanel = tmp_path / "plots" / "encoding_audit_multipanel.png"
+    assert multipanel in plot_paths
+    assert multipanel.stat().st_size > 0

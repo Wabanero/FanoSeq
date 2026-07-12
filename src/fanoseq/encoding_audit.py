@@ -42,6 +42,7 @@ from fanoseq.octonion_numba import (
     octonion_commutator,
     octonion_multiply,
 )
+from fanoseq.plots import compose_plot_multipanel
 from fanoseq.protein_features import encode_protein_window
 from fanoseq.windows import iter_windows
 
@@ -858,6 +859,14 @@ def plot_encoding_audit_outputs(tables: dict[str, pd.DataFrame], output_dir: str
     if "axis_permutation_stability" in tables and not tables["axis_permutation_stability"].empty:
         paths.append(_plot_axis_stability(tables["axis_permutation_stability"], base / "axis_permutation_stability.png"))
         paths.append(_plot_fano_profile_stability(tables["axis_permutation_stability"], base / "fano_line_profile_stability.png"))
+    if paths:
+        paths.append(
+            compose_plot_multipanel(
+                paths,
+                base / "encoding_audit_multipanel.png",
+                "FanoSeq encoding audit multipanel",
+            )
+        )
     return paths
 
 
@@ -2420,7 +2429,14 @@ def _plot_codon_distance_heatmap(table: pd.DataFrame, path: Path) -> Path:
         index=codons,
         columns=codons,
     )
-    return _draw_heatmap(pivot.to_numpy(dtype=float), path, "Codon Euclidean Distance")
+    return _draw_heatmap(
+        pivot.to_numpy(dtype=float),
+        path,
+        "Codon Euclidean Distance",
+        x_label="codon B (lexicographic index)",
+        y_label="codon A (lexicographic index)",
+        legend_label="octonion L2 distance (dimensionless)",
+    )
 
 
 def _plot_codon_pca(catalog: pd.DataFrame, path: Path) -> Path:
@@ -2429,46 +2445,104 @@ def _plot_codon_pca(catalog: pd.DataFrame, path: Path) -> Path:
     _, vectors = _safe_covariance_eigh(centered)
     coords = _matmul(centered, vectors[:, :2])
     labels = catalog["amino_acid"].astype(str).tolist()
-    return _draw_scatter(coords, labels, path, "PCA of 64 Codon Octonions")
+    return _draw_scatter(
+        coords,
+        labels,
+        path,
+        "PCA of 64 Codon Octonions",
+        x_label="PC1 score (dimensionless)",
+        y_label="PC2 score (dimensionless)",
+    )
 
 
 def _plot_synonymous_geometry(distances: pd.DataFrame, path: Path) -> Path:
     table = distances[(distances["codon_a"] < distances["codon_b"]) & distances["same_amino_acid"]]
     means = table.groupby("amino_acid_a")["euclidean_distance"].mean().sort_values()
-    return _draw_bar(means, path, "Synonymous-Family Mean Distance")
+    return _draw_bar(
+        means,
+        path,
+        "Synonymous-Family Mean Distance",
+        x_label="mean octonion L2 distance (dimensionless)",
+        note="descriptive geometry; no pass/fail threshold",
+    )
 
 
 def _plot_mutation_sensitivity(table: pd.DataFrame, path: Path) -> Path:
     grouped = table.groupby("perturbation_type")["sequence_fingerprint_delta_norm"].mean().sort_values()
-    return _draw_bar(grouped, path, "Mutation Sensitivity")
+    return _draw_bar(
+        grouped,
+        path,
+        "Mutation Sensitivity",
+        x_label="mean fingerprint delta L2 norm (dimensionless)",
+        note="larger values indicate stronger encoding change; no fixed threshold",
+    )
 
 
 def _plot_singular_values(table: pd.DataFrame, path: Path) -> Path:
     grouped = table.groupby("singular_value_index")["singular_value"].mean()
-    return _draw_line(grouped, path, "Singular-Value Spectrum")
+    tolerance = _audit_tolerance(table)
+    return _draw_line(
+        grouped,
+        path,
+        "Singular-Value Spectrum",
+        x_label="singular-value index",
+        y_label="singular value (dimensionless)",
+        threshold=tolerance,
+        threshold_label=f"rank tolerance = {tolerance:g}",
+    )
 
 
 def _plot_reverse_complement_residuals(table: pd.DataFrame, path: Path) -> Path:
     values = table["max_abs_residual"].replace([np.inf, -np.inf], np.nan).dropna()
     if values.empty:
         values = pd.Series([0.0])
-    return _draw_line(values.reset_index(drop=True), path, "Reverse-Complement Residuals")
+    tolerance = _audit_tolerance(table)
+    return _draw_line(
+        values.reset_index(drop=True),
+        path,
+        "Reverse-Complement Residuals",
+        x_label="audited sequence/window index",
+        y_label="maximum absolute residual (dimensionless)",
+        threshold=tolerance,
+        threshold_label=f"pass threshold = {tolerance:g}",
+    )
 
 
 def _plot_axis_stability(table: pd.DataFrame, path: Path) -> Path:
     grouped = table.set_index("control_id")["line_share_cosine_to_canonical"].sort_values()
-    return _draw_bar(grouped, path, "Axis-Permutation Stability")
+    return _draw_bar(
+        grouped,
+        path,
+        "Axis-Permutation Stability",
+        x_label="cosine similarity to canonical line profile [0,1]",
+        reference=1.0,
+        reference_label="identity reference = 1.0",
+    )
 
 
 def _plot_fano_profile_stability(table: pd.DataFrame, path: Path) -> Path:
     grouped = table.set_index("control_id")["dominant_fano_line_share"].sort_values()
-    return _draw_bar(grouped, path, "Dominant Fano-Line Share Stability")
+    return _draw_bar(
+        grouped,
+        path,
+        "Dominant Fano-Line Share Stability",
+        x_label="dominant Fano-line contribution share [0,1]",
+        note="descriptive share; no pass/fail threshold",
+    )
 
 
-def _draw_heatmap(values: NDArray[np.float64], path: Path, title: str) -> Path:
-    width = 900
+def _draw_heatmap(
+    values: NDArray[np.float64],
+    path: Path,
+    title: str,
+    *,
+    x_label: str,
+    y_label: str,
+    legend_label: str,
+) -> Path:
+    width = 1000
     height = 900
-    margin = 110
+    margin = 130
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
     font = _font(18)
@@ -2476,20 +2550,51 @@ def _draw_heatmap(values: NDArray[np.float64], path: Path, title: str) -> Path:
     finite = values[np.isfinite(values)]
     vmin = float(finite.min()) if finite.size else 0.0
     vmax = float(finite.max()) if finite.size else 1.0
-    cell = max(1, (width - margin - 30) // values.shape[0])
+    cell = max(1, (width - margin - 150) // values.shape[0])
     for i in range(values.shape[0]):
         for j in range(values.shape[1]):
             color = _blue_red(values[i, j], vmin, vmax)
             x0 = margin + j * cell
             y0 = margin + i * cell
             draw.rectangle((x0, y0, x0 + cell, y0 + cell), fill=color)
+    heat_size = cell * values.shape[0]
+    draw.rectangle((margin, margin, margin + heat_size, margin + heat_size), outline=(20, 35, 45))
+    draw.text((margin + heat_size // 2 - 85, margin + heat_size + 28), x_label, fill=(20, 35, 45), font=_font(13))
+    draw.text((18, margin + heat_size // 2), y_label, fill=(20, 35, 45), font=_font(13))
+    for tick, label in ((0, "0"), (values.shape[0] - 1, str(values.shape[0] - 1))):
+        position = margin + tick * cell
+        draw.text((position, margin + heat_size + 8), label, fill=(80, 90, 100), font=_font(11))
+        draw.text((margin - 28, position), label, fill=(80, 90, 100), font=_font(11))
+    legend_x = margin + heat_size + 45
+    legend_top = margin
+    legend_height = heat_size
+    for offset in range(legend_height):
+        fraction = 1.0 - offset / max(legend_height - 1, 1)
+        value = vmin + fraction * (vmax - vmin)
+        draw.line(
+            (legend_x, legend_top + offset, legend_x + 24, legend_top + offset),
+            fill=_blue_red(value, vmin, vmax),
+        )
+    draw.rectangle((legend_x, legend_top, legend_x + 24, legend_top + legend_height), outline=(20, 35, 45))
+    draw.text((legend_x + 32, legend_top - 3), f"{vmax:.3g}", fill=(20, 35, 45), font=_font(11))
+    draw.text((legend_x + 32, legend_top + legend_height - 12), f"{vmin:.3g}", fill=(20, 35, 45), font=_font(11))
+    draw.text((legend_x - 5, legend_top + legend_height + 18), legend_label, fill=(20, 35, 45), font=_font(11))
+    draw.text((30, 60), "Legend: color encodes pairwise distance; no pass/fail threshold", fill=(80, 90, 100), font=_font(12))
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
 
 
-def _draw_scatter(coords: NDArray[np.float64], labels: list[str], path: Path, title: str) -> Path:
-    image = Image.new("RGB", (900, 700), "white")
+def _draw_scatter(
+    coords: NDArray[np.float64],
+    labels: list[str],
+    path: Path,
+    title: str,
+    *,
+    x_label: str,
+    y_label: str,
+) -> Path:
+    image = Image.new("RGB", (1100, 700), "white")
     draw = ImageDraw.Draw(image)
     draw.text((30, 24), title, fill=(20, 35, 45), font=_font(20))
     if len(coords):
@@ -2498,36 +2603,88 @@ def _draw_scatter(coords: NDArray[np.float64], labels: list[str], path: Path, ti
         x_min, x_max = float(x.min()), float(x.max())
         y_min, y_max = float(y.min()), float(y.max())
         for index, (xv, yv) in enumerate(coords):
-            px = _scale(float(xv), x_min, x_max, 80, 820)
+            px = _scale(float(xv), x_min, x_max, 90, 790)
             py = _scale(float(yv), y_min, y_max, 620, 90)
             color = _label_color(labels[index])
             draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=color, outline=(30, 30, 30))
+        draw.rectangle((90, 90, 790, 620), outline=(20, 35, 45))
+        draw.text((360, 650), x_label, fill=(20, 35, 45), font=_font(13))
+        draw.text((12, 340), y_label, fill=(20, 35, 45), font=_font(13))
+        draw.text((90, 625), f"{x_min:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((750, 625), f"{x_max:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((45, 608), f"{y_min:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((45, 86), f"{y_max:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((825, 82), "Legend: amino-acid code", fill=(20, 35, 45), font=_font(13))
+        for index, label in enumerate(sorted(set(labels))):
+            legend_x = 825 + (index // 11) * 115
+            legend_y = 115 + (index % 11) * 28
+            color = _label_color(label)
+            draw.ellipse((legend_x, legend_y, legend_x + 10, legend_y + 10), fill=color, outline=(30, 30, 30))
+            draw.text((legend_x + 16, legend_y - 3), label, fill=(20, 35, 45), font=_font(12))
+        draw.text((825, 455), "No pass/fail threshold", fill=(80, 90, 100), font=_font(12))
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
 
 
-def _draw_bar(values: pd.Series, path: Path, title: str) -> Path:
-    image = Image.new("RGB", (1000, 700), "white")
+def _draw_bar(
+    values: pd.Series,
+    path: Path,
+    title: str,
+    *,
+    x_label: str,
+    reference: float | None = None,
+    reference_label: str | None = None,
+    note: str | None = None,
+) -> Path:
+    image = Image.new("RGB", (1000, 760), "white")
     draw = ImageDraw.Draw(image)
     draw.text((30, 24), title, fill=(20, 35, 45), font=_font(20))
+    if note:
+        draw.text((30, 58), note, fill=(80, 90, 100), font=_font(12))
     if not values.empty:
         clipped = values.tail(24)
-        max_value = float(max(clipped.max(), 1e-12))
-        bar_h = max(12, min(24, 520 // len(clipped)))
+        max_value = float(max(clipped.max(), reference or 0.0, 1e-12))
+        chart_left = 245
+        chart_right = 920
+        chart_top = 90
+        chart_bottom = 620
+        bar_h = max(10, min(22, 485 // len(clipped)))
         y = 90
         for label, value in clipped.items():
-            width = int(720 * float(value) / max_value)
-            draw.rectangle((230, y, 230 + width, y + bar_h), fill=(20, 116, 153))
+            width = int((chart_right - chart_left) * float(value) / max_value)
+            draw.rectangle((chart_left, y, chart_left + width, y + bar_h), fill=(20, 116, 153))
             draw.text((20, y), str(label)[:28], fill=(20, 35, 45), font=_font(12))
-            draw.text((240 + width, y), f"{float(value):.3g}", fill=(20, 35, 45), font=_font(12))
+            draw.text((chart_left + width + 8, y), f"{float(value):.3g}", fill=(20, 35, 45), font=_font(12))
             y += bar_h + 6
+        draw.line((chart_left, chart_bottom, chart_right, chart_bottom), fill=(20, 35, 45), width=1)
+        for fraction in (0.0, 0.5, 1.0):
+            x = int(chart_left + fraction * (chart_right - chart_left))
+            draw.line((x, chart_bottom, x, chart_bottom + 6), fill=(20, 35, 45), width=1)
+            draw.text((x - 10, chart_bottom + 8), f"{fraction * max_value:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((chart_left + 115, 660), x_label, fill=(20, 35, 45), font=_font(13))
+        draw.rectangle((25, 712, 37, 724), fill=(20, 116, 153))
+        draw.text((44, 709), "observed mean", fill=(20, 35, 45), font=_font(11))
+        if reference is not None:
+            reference_x = _scale(reference, 0.0, max_value, chart_left, chart_right)
+            draw.line((reference_x, chart_top, reference_x, chart_bottom), fill=(210, 70, 55), width=2)
+            draw.line((250, 718, 270, 718), fill=(210, 70, 55), width=2)
+            draw.text((278, 709), reference_label or f"reference = {reference:g}", fill=(20, 35, 45), font=_font(11))
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
 
 
-def _draw_line(values: pd.Series, path: Path, title: str) -> Path:
+def _draw_line(
+    values: pd.Series,
+    path: Path,
+    title: str,
+    *,
+    x_label: str,
+    y_label: str,
+    threshold: float | None = None,
+    threshold_label: str | None = None,
+) -> Path:
     image = Image.new("RGB", (900, 600), "white")
     draw = ImageDraw.Draw(image)
     draw.text((30, 24), title, fill=(20, 35, 45), font=_font(20))
@@ -2535,18 +2692,52 @@ def _draw_line(values: pd.Series, path: Path, title: str) -> Path:
         y_values = values.to_numpy(dtype=float)
         y_min = float(np.nanmin(y_values))
         y_max = float(np.nanmax(y_values))
+        if threshold is not None and np.isfinite(threshold):
+            y_min = min(y_min, threshold)
+            y_max = max(y_max, threshold)
+        if y_min == y_max:
+            padding = max(abs(y_min) * 0.1, 1e-12)
+            y_min -= padding
+            y_max += padding
+        chart = (90, 90, 820, 500)
+        draw.rectangle(chart, outline=(20, 35, 45))
+        for fraction in (0.25, 0.5, 0.75):
+            x_grid = int(chart[0] + fraction * (chart[2] - chart[0]))
+            y_grid = int(chart[1] + fraction * (chart[3] - chart[1]))
+            draw.line((x_grid, chart[1], x_grid, chart[3]), fill=(225, 230, 235))
+            draw.line((chart[0], y_grid, chart[2], y_grid), fill=(225, 230, 235))
         points = []
         for index, value in enumerate(y_values):
-            x = _scale(index, 0, max(len(y_values) - 1, 1), 80, 820)
-            y = _scale(float(value), y_min, y_max, 520, 90)
+            x = _scale(index, 0, max(len(y_values) - 1, 1), chart[0], chart[2])
+            y = _scale(float(value), y_min, y_max, chart[3], chart[1])
             points.append((x, y))
         if len(points) > 1:
             draw.line(points, fill=(217, 95, 2), width=3)
         for x, y in points:
             draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(20, 116, 153))
+        if threshold is not None and np.isfinite(threshold):
+            threshold_y = _scale(threshold, y_min, y_max, chart[3], chart[1])
+            draw.line((chart[0], threshold_y, chart[2], threshold_y), fill=(210, 70, 55), width=2)
+            draw.line((230, 560, 250, 560), fill=(210, 70, 55), width=2)
+            draw.text((258, 552), threshold_label or f"threshold = {threshold:g}", fill=(20, 35, 45), font=_font(11))
+        draw.text((360, 535), x_label, fill=(20, 35, 45), font=_font(13))
+        draw.text((90, 62), f"Y: {y_label}", fill=(80, 90, 100), font=_font(12))
+        draw.text((chart[0], chart[3] + 5), "0", fill=(80, 90, 100), font=_font(11))
+        draw.text((chart[2] - 25, chart[3] + 5), str(max(len(y_values) - 1, 0)), fill=(80, 90, 100), font=_font(11))
+        draw.text((chart[0] - 62, chart[3] - 6), f"{y_min:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.text((chart[0] - 62, chart[1] - 6), f"{y_max:.3g}", fill=(80, 90, 100), font=_font(11))
+        draw.line((25, 560, 45, 560), fill=(217, 95, 2), width=3)
+        draw.text((52, 552), "observed", fill=(20, 35, 45), font=_font(11))
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
+
+
+def _audit_tolerance(table: pd.DataFrame) -> float:
+    if "tolerance" not in table or table.empty:
+        return 1e-9
+    values = pd.to_numeric(table["tolerance"], errors="coerce").dropna()
+    return float(values.iloc[0]) if not values.empty else 1e-9
 
 
 def _font(size: int) -> ImageFont.ImageFont:

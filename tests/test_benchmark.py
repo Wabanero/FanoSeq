@@ -68,6 +68,8 @@ def test_benchmark_is_deterministic_and_group_leakage_free(tmp_path: Path) -> No
     assert fold_rows["best_params_json"].str.contains("model__C").any()
     assert (tmp_path / "run1" / "benchmark_manifest.json").exists()
     assert (tmp_path / "run1" / "benchmark_report.md").exists()
+    assert first["plot"] == tmp_path / "run1" / "benchmark_multipanel.png"
+    assert first["plot"].stat().st_size > 0
 
 
 def test_ablation_feature_sets_are_incremental(tmp_path: Path) -> None:

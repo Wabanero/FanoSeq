@@ -65,6 +65,7 @@ from fanoseq.benchmark.statistics import (
     aggregate_metric_rows,
     paired_comparison_table,
 )
+from fanoseq.plots import plot_benchmark_multipanel
 from fanoseq.io import write_outputs
 
 SCHEMA_VERSION = "0.1.0"
@@ -176,10 +177,16 @@ def run_benchmark_config(config: BenchmarkConfig, output_dir: str | Path) -> dic
         ablation_results=ablations,
         primary_metric=config.evaluation.primary_metric,
     )
+    plot_path = plot_benchmark_multipanel(
+        tables,
+        base_dir / "benchmark_multipanel.png",
+        config.evaluation.primary_metric,
+    )
     return {
         **{name: base_dir / relative for name, relative in written_relative.items()},
         "manifest": manifest_path,
         "report": report_path,
+        "plot": plot_path,
     }
 
 

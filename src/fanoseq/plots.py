@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -53,6 +53,120 @@ def plot_multipanel(
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output)
+    return output
+
+
+def plot_benchmark_multipanel(
+    tables: Mapping[str, pd.DataFrame],
+    output_path: str | Path,
+    primary_metric: str,
+) -> Path:
+    """Create a visual summary of benchmark performance and validity checks."""
+    metrics = tables.get("benchmark_metrics", pd.DataFrame())
+    ablations = tables.get("benchmark_ablation_results", pd.DataFrame())
+    comparisons = tables.get("benchmark_permutation_tests", pd.DataFrame())
+    leakage = tables.get("benchmark_leakage_checks", pd.DataFrame())
+    runs = tables.get("benchmark_runs", pd.DataFrame())
+
+    image, draw, panels, fonts = _base_canvas(
+        f"FanoSeq benchmark multipanel: {primary_metric}"
+    )
+    aggregate = _benchmark_metric_rows(metrics, primary_metric, "aggregate")
+    ranking = aggregate.sort_values("metric_value", ascending=False).head(8)
+    _draw_horizontal_bars(
+        draw,
+        panels[0],
+        fonts,
+        ranking,
+        label_column="feature_set",
+        value_column="metric_value",
+        title="Feature-set ranking",
+        axis_label=f"{primary_metric} score",
+        note="higher is better; no universal pass/fail threshold",
+    )
+    _draw_horizontal_bars(
+        draw,
+        panels[1],
+        fonts,
+        ranking,
+        label_column="feature_set",
+        value_column="metric_value",
+        low_column="ci95_low",
+        high_column="ci95_high",
+        title="Primary-metric 95% confidence intervals",
+        axis_label=f"{primary_metric} score with 95% CI",
+        note="whiskers show fold-based 95% confidence intervals",
+    )
+    _draw_benchmark_fold_panel(draw, panels[2], fonts, metrics, ranking, primary_metric)
+    _draw_benchmark_ablation_panel(draw, panels[3], fonts, ablations)
+    fanoseq_comparisons = comparisons[
+        comparisons.get("feature_set", pd.Series(dtype=str)).astype(str).str.startswith("fanoseq")
+    ].copy()
+    fanoseq_comparisons = fanoseq_comparisons.sort_values(
+        "mean_difference", ascending=False
+    ).head(8)
+    _draw_horizontal_bars(
+        draw,
+        panels[4],
+        fonts,
+        fanoseq_comparisons,
+        label_column="feature_set",
+        value_column="mean_difference",
+        title="FanoSeq difference vs best conventional baseline",
+        centered_zero=True,
+        axis_label="paired score difference (FanoSeq - baseline)",
+        note="zero is the no-improvement reference",
+    )
+    _draw_text_panel(
+        draw,
+        panels[5],
+        fonts,
+        "Benchmark validity summary",
+        _benchmark_summary_lines(runs, metrics, leakage, ranking, primary_metric),
+    )
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output)
+    return output
+
+
+def compose_plot_multipanel(
+    plot_paths: Sequence[str | Path],
+    output_path: str | Path,
+    title: str,
+) -> Path:
+    """Compose existing PNG plots into one readable report image."""
+    sources = [Path(path) for path in plot_paths if Path(path).exists()]
+    if not sources:
+        raise ValueError("At least one existing plot is required for a multipanel.")
+
+    columns = 2
+    rows = (len(sources) + columns - 1) // columns
+    canvas = Image.new("RGB", (1600, 105 + rows * 410), BACKGROUND)
+    draw = ImageDraw.Draw(canvas)
+    title_font = ImageFont.load_default(size=26)
+    label_font = ImageFont.load_default(size=16)
+    draw.text((45, 28), title, fill=INK, font=title_font)
+    for index, source in enumerate(sources):
+        column = index % columns
+        row = index // columns
+        x0 = 45 + column * 775
+        y0 = 85 + row * 410
+        rect = (x0, y0, x0 + 740, y0 + 370)
+        draw.rounded_rectangle(rect, radius=8, fill=PANEL, outline=(210, 218, 226))
+        label = source.stem.replace("_", " ").title()
+        draw.text((x0 + 16, y0 + 12), label, fill=INK, font=label_font)
+        with Image.open(source) as source_image:
+            tile = source_image.convert("RGB")
+            tile.thumbnail((700, 315), Image.Resampling.LANCZOS)
+            paste_x = x0 + (740 - tile.width) // 2
+            paste_y = y0 + 45 + (315 - tile.height) // 2
+            canvas.paste(tile, (paste_x, paste_y))
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output)
     return output
 
 
@@ -361,6 +475,231 @@ def _draw_line_panel(
         for point in points[:: max(1, len(points) // 30)]:
             draw.ellipse((point[0] - 2, point[1] - 2, point[0] + 2, point[1] + 2), fill=COLORS[index % len(COLORS)])
     _draw_legend(draw, rect, fonts, columns)
+
+
+def _benchmark_metric_rows(
+    metrics: pd.DataFrame, primary_metric: str, level: str
+) -> pd.DataFrame:
+    required = {"metric_name", "level", "metric_value", "feature_set", "model"}
+    if metrics.empty or not required.issubset(metrics.columns):
+        return pd.DataFrame()
+    return metrics[
+        (metrics["metric_name"].astype(str) == primary_metric)
+        & (metrics["level"].astype(str) == level)
+    ].copy()
+
+
+def _draw_horizontal_bars(
+    draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int],
+    fonts: dict[str, ImageFont.ImageFont],
+    table: pd.DataFrame,
+    *,
+    label_column: str,
+    value_column: str,
+    title: str,
+    axis_label: str,
+    low_column: str | None = None,
+    high_column: str | None = None,
+    centered_zero: bool = False,
+    note: str | None = None,
+) -> None:
+    _draw_panel_frame(draw, rect, fonts, title)
+    if table.empty or not {label_column, value_column}.issubset(table.columns):
+        _draw_center_text(draw, rect, fonts, "No rows available")
+        return
+    rows = table.head(8).copy()
+    values = pd.to_numeric(rows[value_column], errors="coerce").to_numpy(dtype=float)
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        _draw_center_text(draw, rect, fonts, "No finite values")
+        return
+    domain_values = list(finite)
+    if low_column and low_column in rows:
+        domain_values.extend(
+            pd.to_numeric(rows[low_column], errors="coerce").dropna().tolist()
+        )
+    if high_column and high_column in rows:
+        domain_values.extend(
+            pd.to_numeric(rows[high_column], errors="coerce").dropna().tolist()
+        )
+    minimum = min(domain_values)
+    maximum = max(domain_values)
+    if centered_zero:
+        extent = max(abs(minimum), abs(maximum), 1e-9)
+        minimum, maximum = -extent, extent
+    else:
+        minimum = min(0.0, minimum)
+        maximum = max(maximum, 1e-9)
+    if minimum == maximum:
+        maximum = minimum + 1.0
+
+    x0, y0, x1, _ = rect
+    chart_left = x0 + 230
+    chart_right = x1 - 24
+    zero_x = int(chart_left + (0.0 - minimum) / (maximum - minimum) * (chart_right - chart_left))
+    draw.line((zero_x, y0 + 55, zero_x, y0 + 340), fill=MUTED, width=1)
+    row_height = 34
+    for index, (_, row) in enumerate(rows.iterrows()):
+        value = float(pd.to_numeric(row[value_column], errors="coerce"))
+        if not np.isfinite(value):
+            continue
+        y = y0 + 60 + index * row_height
+        value_x = int(
+            chart_left + (value - minimum) / (maximum - minimum) * (chart_right - chart_left)
+        )
+        left, right = sorted((zero_x, value_x))
+        color = COLORS[index % len(COLORS)] if value >= 0 else (180, 65, 55)
+        draw.rectangle((left, y + 5, max(left + 2, right), y + 21), fill=color)
+        label = str(row[label_column])[:31]
+        draw.text((x0 + 14, y + 4), label, fill=INK, font=fonts["small"])
+        draw.text((value_x + (5 if value >= 0 else -42), y + 4), f"{value:.3f}", fill=INK, font=fonts["small"])
+        if low_column and high_column and low_column in row and high_column in row:
+            low = float(pd.to_numeric(row[low_column], errors="coerce"))
+            high = float(pd.to_numeric(row[high_column], errors="coerce"))
+            if np.isfinite(low) and np.isfinite(high):
+                low_x = int(
+                    chart_left
+                    + (low - minimum) / (maximum - minimum) * (chart_right - chart_left)
+                )
+                high_x = int(
+                    chart_left
+                    + (high - minimum) / (maximum - minimum) * (chart_right - chart_left)
+                )
+                draw.line((low_x, y + 25, high_x, y + 25), fill=INK, width=1)
+                draw.line((low_x, y + 21, low_x, y + 29), fill=INK, width=1)
+                draw.line((high_x, y + 21, high_x, y + 29), fill=INK, width=1)
+    axis_y = rect[3] - 72
+    draw.line((chart_left, axis_y, chart_right, axis_y), fill=INK, width=1)
+    for fraction in (0.0, 0.5, 1.0):
+        x = int(chart_left + fraction * (chart_right - chart_left))
+        value = minimum + fraction * (maximum - minimum)
+        draw.line((x, axis_y, x, axis_y + 5), fill=INK, width=1)
+        draw.text((x - 16, axis_y + 7), f"{value:.2g}", fill=MUTED, font=fonts["small"])
+    draw.text((chart_left, rect[3] - 43), axis_label, fill=INK, font=fonts["small"])
+    if note:
+        draw.text((rect[0] + 14, rect[3] - 22), note, fill=MUTED, font=fonts["small"])
+
+
+def _draw_benchmark_fold_panel(
+    draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int],
+    fonts: dict[str, ImageFont.ImageFont],
+    metrics: pd.DataFrame,
+    ranking: pd.DataFrame,
+    primary_metric: str,
+) -> None:
+    folds = _benchmark_metric_rows(metrics, primary_metric, "fold")
+    if folds.empty or ranking.empty:
+        _draw_empty_panel(draw, rect, fonts, "Held-out fold stability", "No fold rows")
+        return
+    selected = ranking[["feature_set", "model"]].drop_duplicates().head(5)
+    series: dict[str, list[float]] = {}
+    for _, selected_row in selected.iterrows():
+        rows = folds[
+            (folds["feature_set"] == selected_row["feature_set"])
+            & (folds["model"] == selected_row["model"])
+        ].sort_values(["repeat", "fold"])
+        label = str(selected_row["feature_set"])
+        series[label] = pd.to_numeric(rows["metric_value"], errors="coerce").tolist()
+    max_length = max((len(values) for values in series.values()), default=0)
+    frame = pd.DataFrame({"fold": np.arange(max_length, dtype=float)})
+    for label, values in series.items():
+        frame[label] = pd.Series(values, dtype=float)
+    _draw_line_panel(
+        draw,
+        rect,
+        fonts,
+        frame,
+        "fold",
+        list(series),
+        "Held-out fold stability (x: fold, y: score)",
+    )
+
+
+def _draw_benchmark_ablation_panel(
+    draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int],
+    fonts: dict[str, ImageFont.ImageFont],
+    ablations: pd.DataFrame,
+) -> None:
+    required = {"ablation_stage", "model", "metric_value"}
+    if ablations.empty or not required.issubset(ablations.columns):
+        _draw_empty_panel(draw, rect, fonts, "Incremental FanoSeq ablation", "No ablation rows")
+        return
+    pivot = ablations.pivot_table(
+        index="ablation_stage", columns="model", values="metric_value", aggfunc="mean"
+    ).sort_index()
+    frame = pivot.reset_index()
+    _draw_line_panel(
+        draw,
+        rect,
+        fonts,
+        frame,
+        "ablation_stage",
+        [str(column) for column in pivot.columns],
+        "Incremental FanoSeq ablation (x: stage, y: score)",
+    )
+
+
+def _benchmark_summary_lines(
+    runs: pd.DataFrame,
+    metrics: pd.DataFrame,
+    leakage: pd.DataFrame,
+    ranking: pd.DataFrame,
+    primary_metric: str,
+) -> list[str]:
+    run = runs.iloc[0] if not runs.empty else pd.Series(dtype=object)
+    feature_sets = metrics["feature_set"].nunique() if "feature_set" in metrics else 0
+    models = metrics["model"].nunique() if "model" in metrics else 0
+    group_leaks = (
+        int(pd.to_numeric(leakage["group_leakage_detected"], errors="coerce").fillna(0).sum())
+        if "group_leakage_detected" in leakage
+        else 0
+    )
+    similarity_leaks = (
+        int(
+            pd.to_numeric(
+                leakage["sequence_similarity_leakage_detected"], errors="coerce"
+            ).fillna(0).sum()
+        )
+        if "sequence_similarity_leakage_detected" in leakage
+        else 0
+    )
+    max_identity = (
+        float(pd.to_numeric(leakage["max_train_test_identity"], errors="coerce").max())
+        if "max_train_test_identity" in leakage and not leakage.empty
+        else np.nan
+    )
+    similarity_threshold = (
+        float(pd.to_numeric(leakage["similarity_threshold"], errors="coerce").max())
+        if "similarity_threshold" in leakage and not leakage.empty
+        else np.nan
+    )
+    lines = [
+        f"run_id: {run.get('run_id', 'NA')}",
+        f"task: {run.get('task', 'NA')}",
+        f"sequences: {run.get('n_sequences', 'NA')}",
+        f"primary metric: {primary_metric}",
+        f"feature sets / models: {feature_sets} / {models}",
+        f"group leakage splits: {group_leaks}",
+        f"similarity leakage splits: {similarity_leaks}",
+        f"max train-test identity: {max_identity:.3f}" if np.isfinite(max_identity) else "max train-test identity: NA",
+        (
+            f"similarity leakage threshold: {similarity_threshold:.3f}"
+            if np.isfinite(similarity_threshold)
+            else "similarity leakage threshold: NA"
+        ),
+    ]
+    if not ranking.empty:
+        best = ranking.iloc[0]
+        lines.extend(
+            [
+                f"best feature set: {best['feature_set']}",
+                f"best score: {float(best['metric_value']):.3f}",
+            ]
+        )
+    return lines
 
 
 def _draw_fano_heatmap(

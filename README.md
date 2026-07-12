@@ -359,109 +359,92 @@ pip install -e .
 pytest
 ```
 
-## Example Usage
+## How To Use
 
-DNA window mode:
+### What Should I Run?
+
+For most users, start with `fanoseq run`. It is the main analysis command and
+the only required step. The pipeline is the internal engine behind this command;
+there is no separate `pipeline` command to run.
+
+| Goal | Command | When to use it |
+| --- | --- | --- |
+| Describe one or more sequences | `fanoseq run` | Your normal starting point. It converts FASTA sequences into FanoSeq trajectories, interactions, and sequence summaries. |
+| Run the complete validated workflow | `fanoseq analyze` | Use this for a labelled dataset. It runs pipeline, benchmark, and encoding audit on the same FASTA and organizes all reports automatically. |
+| Test whether FanoSeq features are predictive | `fanoseq benchmark` | Use this only when you have labelled sequences and want cross-validated comparisons against conventional baselines. It runs feature extraction itself, so you do not need to run `fanoseq run` first. |
+| Inspect the assumptions of an encoding | `fanoseq audit-encoding` | Optional research/development check. It tests invariance, collisions, redundancy, and mutation sensitivity; it is not needed for routine sequence analysis. |
+
+The practical order is therefore:
+
+1. Use `fanoseq run` for quick exploration without labels.
+2. Use `fanoseq analyze` when you have labels and want the complete workflow.
+3. Use `fanoseq benchmark` or `fanoseq audit-encoding` separately only for focused methodological work.
+
+Each workflow has a visual summary. Use `fanoseq plot-multipanel` after a
+normal sequence run; benchmark and encoding-audit commands write
+`benchmark_multipanel.png` and `encoding_audit_multipanel.png` automatically.
+
+### Quick Start
+
+Run the complete workflow on the labelled example dataset:
+
+```bash
+fanoseq analyze --input examples/benchmark_sequences.fasta --benchmark-config examples/benchmark.yaml --seq-type dna --window-size 9 --step 3 --output-dir results/complete_analysis
+```
+
+The FASTA passed to `--input` must be the same `dataset.fasta` declared in the
+benchmark config. This prevents pipeline, benchmark, and audit reports from
+silently describing different datasets.
+
+Analyze DNA:
 
 ```bash
 fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 10 --step 1 --output-dir results/example_dna_windows
 ```
 
-Validate the octonion basis convention:
-
-```bash
-fanoseq validate-basis --output-dir results/basis_validation
-```
-
-Generate baseline comparator features:
-
-```bash
-fanoseq baselines --input examples/example_dna.fasta --seq-type dna --kmer-k 4 --frame all --output-dir results/example_dna_baselines
-```
-
-Run a leakage-controlled benchmark comparing FanoSeq feature families against
-composition, k-mer, FCGR, codon-usage, real-valued interaction, and
-random-projection controls:
+Test the complete benchmark workflow on the labelled example dataset:
 
 ```bash
 fanoseq benchmark --config examples/benchmark.yaml --output-dir results/benchmark
 ```
 
-Benchmark results may falsify the usefulness of the Fano structure for a
-particular dataset or task. That is an expected scientific outcome, not a
-failure of the framework.
-
-Protein window mode:
+Run a protein analysis:
 
 ```bash
 fanoseq run --input examples/example_protein.fasta --seq-type protein --mode window --window-size 15 --step 1 --output-dir results/example_protein_windows
 ```
 
-DNA codon mode:
+Audit the DNA encoding when investigating its methodological behavior:
 
 ```bash
-fanoseq run --input examples/example_dna.fasta --seq-type dna --mode codon --frame 0 --output-dir results/example_dna_codon
+fanoseq audit-encoding --input examples/example_dna.fasta --seq-type dna --output-dir results/encoding_audit
 ```
 
-Full DNA mode:
+Use `fanoseq --help` or `fanoseq COMMAND --help` to discover codon analysis,
+baselines, plots, tensor export, distance matrices, and output options. For large
+datasets, add `--output-format parquet` or `--output-format bundle`.
 
 ```bash
-fanoseq run --input examples/example_dna.fasta --seq-type dna --mode both --frame all --window-size 10 --step 1 --output-dir results/example_dna_full
-```
-
-Genome-scale or larger exploratory runs should prefer Parquet or bundle output:
-
-```bash
-fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 100 --step 10 --output-dir results/example_dna_parquet --output-format parquet
-```
-
-```bash
-fanoseq run --input examples/example_dna.fasta --seq-type dna --mode both --frame all --window-size 100 --step 10 --output-dir results/example_dna.fanoseq --output-format bundle --summary-only
-```
-
-Sparse transition/event output can keep only strong local transitions:
-
-```bash
-fanoseq run --input examples/example_dna.fasta --seq-type dna --mode window --window-size 100 --step 10 --output-dir results/example_dna_events --output-format bundle --top-k-transitions 10000
-```
-
-Matrix-genetics tables:
-
-```bash
-fanoseq matrix-genetics --output-dir results/matrix_genetics --output-format bundle
-```
-
-Octonion-walk k-mer encodings:
-
-```bash
-fanoseq octonion-walk --input examples/example_dna.fasta --k 6 --step 1 --output-dir results/example_walks --output-format parquet
-```
-
-Distance matrix from sequence fingerprints:
-
-```bash
-fanoseq distances --fingerprints results/example_dna_parquet/sequence_fingerprints.parquet --output-dir results/example_distances
-```
-
-AI-ready tensor export from a component table:
-
-```bash
-fanoseq export-tensor --table results/example_dna_parquet/window_octonions.parquet --output results/example_dna_windows.npz
-```
-
-Fano-line triad counts:
-
-```bash
-fanoseq fano-triads --input examples/example_protein.fasta --seq-type protein --output-dir results/example_protein_triads
-```
-
-Multipanel diagnostic plot from a FanoSeq output directory:
-
-```bash
-fanoseq plot-multipanel --input-dir results/example_dna_full --output results/example_dna_full/fanoseq_multipanel.png --mode window
+fanoseq --help
 ```
 
 ## Output Files
+
+A complete `fanoseq analyze` run uses this layout:
+
+```text
+complete_analysis/
+  pipeline/                       # trajectory tables and detailed plots
+  benchmark/                      # metrics, predictions, folds, report, plot
+  audit/                          # audit tables and individual diagnostic plots
+  pipeline_window_multipanel.png  # promoted main report
+  pipeline_codon_multipanel.png   # promoted main report for DNA
+  benchmark_multipanel.png        # promoted main report
+  encoding_audit_multipanel.png   # promoted main report
+  benchmark_report.md
+  sequence_fingerprints.tsv
+  analysis_manifest.json
+```
 
 FanoSeq supports three output formats:
 
@@ -504,6 +487,16 @@ The manifest stores schema version, input hash, run configuration, output table 
 `baseline_sequence_features.tsv`, `baseline_kmer_frequencies.tsv`, `baseline_kmer_feature_matrix.tsv`, and `baseline_codon_usage.tsv` provide mature comparator features for DNA benchmark studies. Protein baseline runs write sequence, residue-composition, and amino-acid k-mer tables.
 
 `fanoseq_multipanel.png` is an optional diagnostic figure created by `fanoseq plot-multipanel`. Window plots include octonion component trajectories, descriptor tracks, transition and associator scores, Fano-line contribution heatmaps, top Fano lines, and a run summary. Codon plots use codon-index trajectories, codon descriptors, transition scores, Fano-line heatmaps, codon-usage summaries, and a run summary.
+
+`benchmark_multipanel.png` is written automatically by `fanoseq benchmark`. It
+shows feature-set ranking, confidence intervals, held-out fold stability,
+incremental ablations, paired differences from the strongest conventional
+baseline, and leakage checks.
+
+`encoding_audit_multipanel.png` is written automatically by
+`fanoseq audit-encoding` alongside its individual audit plots. It combines the
+available geometry, mutation, redundancy, reverse-complement, and axis-control
+diagnostics into one report image.
 
 `window_octonions.tsv` or `.parquet` contains one row per sequence window with `axis_scheme_id`, auxiliary descriptors, and `e0...e7` components.
 
