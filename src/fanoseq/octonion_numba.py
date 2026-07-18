@@ -7,10 +7,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+_numba: Any = None
 try:  # pragma: no cover - behavior is exercised through the public functions.
-    import numba as _numba
+    import numba as _imported_numba
 except Exception:  # pragma: no cover
-    _numba = None
+    pass
+else:  # pragma: no cover
+    _numba = _imported_numba
 
 
 def _optional_njit(*args: object, **kwargs: object) -> Any:
