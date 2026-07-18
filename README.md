@@ -127,7 +127,7 @@ FanoSeq follows an evidence-maturity model:
 | Hypercomplex computation and ML | moderate to strong | optional representations, tensor exports, future parameter-efficient layers | experimental modules must be compared with real-valued baselines |
 | Direct octonion bioinformatics | sparse and exploratory | hypothesis-generating descriptors and candidate applications | no biological usefulness claims without public benchmark evidence |
 
-The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md`, `docs/scientific_evidence_status.md`, `docs/methods_report.md`, `docs/references.md`, and `docs/implementation_roadmap.md`.
+The practical consequence is simple: validate the algebra first, compare against mature baselines second, and defer octonion-aware deep learning until classical benchmarks exist. See `docs/scientific_scope.md`, `docs/scientific_evidence_status.md`, `docs/methods_report.md`, `docs/references.md`, `docs/implementation_roadmap.md`, `docs/versioning.md`, `docs/homology_splitting.md`, `docs/information_theory.md`, and `docs/biological_context.md`.
 
 | component | software status | mathematical validation | biological validation |
 | --- | --- | --- | --- |
@@ -161,7 +161,7 @@ nonsynonymous codon geometry, mutation-sensitivity summaries, feature-redundancy
 controls, and axis-permutation/automorphism controls.
 
 Current default findings are deliberately modest and evidence-scoped. They were
-verified for FanoSeq v0.1.0 with `dna-window-v1`, `codon-product-v1`,
+verified for FanoSeq v0.2.0 with `dna-window-v1`, `codon-product-v1`,
 standard genetic code, non-normalized codon products, and tolerance `1e-9`.
 Future encoding, scheme, normalization, or genetic-code changes should rerun the
 audit before carrying these statements forward.

@@ -1,6 +1,6 @@
 dataset_id: coding-noncoding-v1
 title: Coding versus noncoding DNA windows
-status: source_release_selected
+status: matching_preparation_implemented_requires_curated_source
 benchmark: A
 purpose: >
   Validate DNA-window and codon features, then test whether Fano-structured
@@ -10,6 +10,7 @@ source:
   name: GENCODE Human Release 50
   accession: GRCh38.p14 comprehensive gene annotation and transcript FASTA
   version: "50"
+  url: https://www.gencodegenes.org/human/
   citation: >
     Mudge JM et al. GENCODE 2025: reference gene annotation for human and mouse.
     Nucleic Acids Research 53(D1):D966-D975, 2025.

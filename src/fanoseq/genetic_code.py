@@ -1,4 +1,4 @@
-"""Genetic-code helpers with a standard-code fallback."""
+"""Genetic-code helpers with an explicit standard-code fallback."""
 
 from __future__ import annotations
 
@@ -106,10 +106,18 @@ class GeneticCode:
 
 
 def get_genetic_code(table: str | int = "standard") -> GeneticCode:
-    """Return a genetic code from Biopython when available, with standard fallback."""
+    """Return a requested genetic code without silently substituting another table."""
     try:
         from Bio.Data import CodonTable
+    except ModuleNotFoundError as exc:
+        if str(table).lower().replace("_", " ") not in {"standard", "standard code", "1"}:
+            raise ValueError(
+                f"Genetic code {table!r} requires Biopython; only the built-in standard "
+                "table is available."
+            ) from exc
+        return _standard_genetic_code()
 
+    try:
         if isinstance(table, int) or str(table).isdigit():
             bio_table = CodonTable.unambiguous_dna_by_id[int(table)]
         else:
@@ -121,27 +129,32 @@ def get_genetic_code(table: str | int = "standard") -> GeneticCode:
                     name.lower(): candidate
                     for candidate in CodonTable.unambiguous_dna_by_id.values()
                     for name in candidate.names
+                    if name is not None
                 }
                 bio_table = matches[table_key]
-        codon_to_aa = {codon: aa for codon, aa in bio_table.forward_table.items()}
-        for codon in bio_table.stop_codons:
-            codon_to_aa[codon] = "*"
-        return GeneticCode(
-            name=bio_table.names[0],
-            codon_to_aa=codon_to_aa,
-            start_codons=set(bio_table.start_codons),
-            stop_codons=set(bio_table.stop_codons),
-        )
-    except Exception:
-        return GeneticCode(
-            name="standard",
-            codon_to_aa=dict(STANDARD_CODE),
-            start_codons=set(STANDARD_START_CODONS),
-            stop_codons=set(STANDARD_STOP_CODONS),
-        )
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"Unknown or unsupported genetic code table: {table!r}.") from exc
+    codon_to_aa = {codon: aa for codon, aa in bio_table.forward_table.items()}
+    for codon in bio_table.stop_codons:
+        codon_to_aa[codon] = "*"
+    return GeneticCode(
+        name=bio_table.names[0],
+        codon_to_aa=codon_to_aa,
+        start_codons=set(bio_table.start_codons),
+        stop_codons=set(bio_table.stop_codons),
+    )
+
+
+def _standard_genetic_code() -> GeneticCode:
+    """Return the bundled NCBI table 1 used only when Biopython is unavailable."""
+    return GeneticCode(
+        name="standard",
+        codon_to_aa=dict(STANDARD_CODE),
+        start_codons=set(STANDARD_START_CODONS),
+        stop_codons=set(STANDARD_STOP_CODONS),
+    )
 
 
 def all_standard_codons() -> list[str]:
     """Return the 64 DNA codons in lexical A/C/G/T order."""
     return ["".join(codon) for codon in product("ACGT", repeat=3)]
-

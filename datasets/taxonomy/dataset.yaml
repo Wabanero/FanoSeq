@@ -11,6 +11,8 @@ source:
   name: SILVA SSU Ref NR 99
   accession: SILVA SSU Ref NR 99 release 138.2
   version: "138.2"
+  url: https://www.arb-silva.de/documentation/release-1382/
+  dataset_doi: 10.82364/138.2/SSU/Ref-NR99/FASTA/unaligned/truncated
   citation: >
     Quast C et al. The SILVA ribosomal RNA gene database project: improved data
     processing and web-based tools. Nucleic Acids Research 41(D1):D590-D596,

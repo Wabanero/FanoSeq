@@ -25,6 +25,7 @@ from fanoseq.axis_schemes import (
 )
 from fanoseq.baselines import build_baseline_tables
 from fanoseq.benchmark import run_benchmark as run_benchmark_command
+from fanoseq.benchmark.homology import HomologyGroupConfig, prepare_homology_groups
 from fanoseq.distances import build_distance_matrix, build_neighbor_table
 from fanoseq.encoding_audit import (
     EncodingAuditConfig,
@@ -95,6 +96,11 @@ def run(
         "--codon-normalize",
         help="Normalize codon octonions to unit norm when possible.",
     ),
+    rscu_stop_policy: str = typer.Option(
+        "exclude",
+        "--rscu-stop-policy",
+        help="Stop-codon RSCU policy: exclude, separate, or pooled.",
+    ),
     axis_scheme: Optional[str] = typer.Option(
         None,
         "--axis-scheme",
@@ -161,6 +167,7 @@ def run(
             codon_table=codon_table,
             include_partial_codons=include_partial_codons,
             include_stop_codons=include_stop_codons,
+            rscu_stop_policy=rscu_stop_policy.lower(),  # type: ignore[arg-type]
             codon_normalize=codon_normalize,
             window_axis_scheme=window_axis_scheme_effective,
             codon_axis_scheme=codon_axis_scheme_effective,
@@ -188,10 +195,23 @@ def analyze(
         help="Benchmark manifest whose dataset.fasta must match --input.",
     ),
     output_dir: Path = typer.Option(..., "--output-dir", help="Root directory for all outputs."),
-    seq_type: str = typer.Option("dna", "--seq-type", help="Either 'dna' or 'protein'."),
-    window_size: int = typer.Option(10, "--window-size", help="Sliding-window size."),
-    step: int = typer.Option(1, "--step", help="Sliding-window step size."),
-    kmer_k: int = typer.Option(2, "--kmer-k", help="k for k-mer entropy descriptors."),
+    seq_type: Optional[str] = typer.Option(
+        None, "--seq-type", help="Optional explicit override; defaults to the benchmark manifest."
+    ),
+    window_size: Optional[int] = typer.Option(
+        None, "--window-size", help="Optional explicit override of the benchmark manifest."
+    ),
+    step: Optional[int] = typer.Option(
+        None, "--step", help="Optional explicit override of the benchmark manifest."
+    ),
+    kmer_k: Optional[int] = typer.Option(
+        None, "--kmer-k", help="Optional explicit override of the benchmark manifest."
+    ),
+    allow_config_override: bool = typer.Option(
+        False,
+        "--allow-config-override",
+        help="Allow and record explicit extraction settings that differ from the manifest.",
+    ),
     audit_permutation_samples: int = typer.Option(
         16,
         "--audit-permutation-samples",
@@ -210,10 +230,11 @@ def analyze(
                 input_path=input_path,
                 benchmark_config=benchmark_config,
                 output_dir=output_dir,
-                seq_type=seq_type.lower(),
+                seq_type=seq_type.lower() if seq_type is not None else None,
                 window_size=window_size,
                 step=step,
                 kmer_k=kmer_k,
+                allow_config_override=allow_config_override,
                 audit_permutation_samples=audit_permutation_samples,
                 audit_max_perturbations=audit_max_perturbations,
             )
@@ -225,6 +246,47 @@ def analyze(
         f"[green]FanoSeq complete analysis wrote pipeline/, benchmark/, audit/, "
         f"and {len(outputs)} main files to {output_dir}.[/green]"
     )
+
+
+@app.command("prepare-homology-groups")
+def prepare_homology_groups_command(
+    metadata_path: Path = typer.Option(..., "--metadata", help="Input metadata TSV/CSV/Parquet."),
+    cluster_table_path: Path = typer.Option(
+        ..., "--clusters", help="External cluster table with member and cluster columns."
+    ),
+    output_path: Path = typer.Option(..., "--output", help="Output grouped metadata TSV."),
+    id_column: str = typer.Option("sequence_id", "--id-column"),
+    member_column: str = typer.Option("sequence_id", "--member-column"),
+    cluster_column: str = typer.Option("homology_cluster", "--cluster-column"),
+    output_group_column: str = typer.Option("homology_cluster", "--output-group-column"),
+    clustering_tool: str = typer.Option("external", "--tool"),
+    clustering_tool_version: str = typer.Option("unknown", "--tool-version"),
+    minimum_identity: Optional[float] = typer.Option(None, "--minimum-identity"),
+    minimum_coverage: Optional[float] = typer.Option(None, "--minimum-coverage"),
+    allow_singletons: bool = typer.Option(False, "--allow-singletons"),
+) -> None:
+    """Attach external homology clusters as fail-closed benchmark groups."""
+    try:
+        grouped, manifest = prepare_homology_groups(
+            HomologyGroupConfig(
+                metadata_path=metadata_path,
+                cluster_table_path=cluster_table_path,
+                output_path=output_path,
+                id_column=id_column,
+                member_column=member_column,
+                cluster_column=cluster_column,
+                output_group_column=output_group_column,
+                clustering_tool=clustering_tool,
+                clustering_tool_version=clustering_tool_version,
+                minimum_identity=minimum_identity,
+                minimum_coverage=minimum_coverage,
+                allow_singletons=allow_singletons,
+            )
+        )
+    except Exception as exc:
+        console.print(f"[red]FanoSeq error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]FanoSeq wrote grouped metadata to {grouped} and {manifest}[/green]")
 
 
 @app.command("list-encodings")

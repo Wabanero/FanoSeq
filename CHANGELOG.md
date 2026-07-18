@@ -2,7 +2,33 @@
 
 All notable changes to FanoSeq will be recorded here.
 
-## 0.1.0 - Unreleased
+## 0.2.0 - 2026-07-18
+
+### Added
+
+- Fail-closed grouped and stratified-grouped splitting with an explicitly
+  recorded unsafe override.
+- Fold-local feature-quality filtering and machine-readable diagnostics.
+- Executed sequence and representation null models with configurable repeats.
+- A single resolved extraction plan and provenance-rich complete-analysis
+  manifest with hashes, versions, dimensions, timing, memory, and warnings.
+- Explicit stop-codon policy for RSCU calculations.
+
+### Changed
+
+- Removed the exact `transition_score` alias from the commutator benchmark
+  feature family while retaining the raw pipeline column for compatibility.
+- Renamed the lightweight leakage metric to positional identity so it cannot be
+  mistaken for an alignment or homology estimate.
+- Invalid requested genetic-code tables now fail instead of silently falling
+  back to the standard code.
+
+### Fixed
+
+- Feature-matrix provenance prefixes when an intermediate feature set is empty.
+- Repository URL and release metadata in `CITATION.cff`.
+
+## 0.1.0 - 2026-07-12
 
 ### Added
 
@@ -26,5 +52,3 @@ All notable changes to FanoSeq will be recorded here.
 
 - Public benchmark preparation from pinned source releases.
 - External validation after the first development benchmark is frozen.
-- Runtime and memory accounting in benchmark reports.
-

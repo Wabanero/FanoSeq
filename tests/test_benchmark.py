@@ -26,8 +26,26 @@ from fanoseq.benchmark.null_models import (
     synonymous_codon_shuffle,
     translated_sequence,
 )
+from fanoseq.benchmark.models import default_model_specs, make_pipeline
 from fanoseq.cli import app
 from fanoseq.genetic_code import get_genetic_code
+
+
+def test_logistic_regression_supports_multiclass_classification() -> None:
+    spec = default_model_specs(
+        "classification",
+        random_seed=42,
+        requested=("logistic_regression",),
+    )[0]
+    model = make_pipeline(spec)
+    features = np.array(
+        [[-2.0, -1.0], [-1.8, -1.2], [0.0, 1.0], [0.2, 1.1], [2.0, -0.5], [2.2, -0.7]]
+    )
+    labels = np.array(["donor", "donor", "acceptor", "acceptor", "neither", "neither"])
+
+    model.fit(features, labels)
+
+    assert set(model.predict(features)) == set(labels)
 
 
 def test_yaml_config_parsing(tmp_path: Path) -> None:
@@ -65,7 +83,7 @@ def test_benchmark_is_deterministic_and_group_leakage_free(tmp_path: Path) -> No
     leakage = pd.read_csv(first["benchmark_leakage_checks"], sep="\t")
     assert not leakage["group_leakage_detected"].any()
     fold_rows = first_metrics[first_metrics["level"] == "fold"]
-    assert fold_rows["best_params_json"].str.contains("model__C").any()
+    assert fold_rows["best_params_json"].str.contains("model__estimator__C").any()
     assert (tmp_path / "run1" / "benchmark_manifest.json").exists()
     assert (tmp_path / "run1" / "benchmark_report.md").exists()
     assert first["plot"] == tmp_path / "run1" / "benchmark_multipanel.png"
@@ -196,6 +214,53 @@ def test_benchmark_cli_smoke(tmp_path: Path) -> None:
     assert (tmp_path / "cli_run" / "benchmark_metrics.tsv").exists()
 
 
+def test_null_models_are_evaluated_without_placeholder_metrics(tmp_path: Path) -> None:
+    _write_fixture(tmp_path)
+    config_path = tmp_path / "benchmark.json"
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["features"] = ["fanoseq_components", "randomized_fano_structure"]
+    payload["evaluation"]["run_ablations"] = False
+    payload["null_models"] = {
+        "sequence_nulls": ["mononucleotide_shuffle"],
+        "sequence_null_repeats": 1,
+        "representation_nulls": [
+            "remove_scalar_e0",
+            "imaginary_axis_permutation",
+            "random_antisymmetric_tensor",
+        ],
+        "axis_permutation_repeats": 2,
+        "random_tensor_repeats": 2,
+        "randomized_fano_repeats": 2,
+        "random_seed": 71,
+    }
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    outputs = run_benchmark_config(
+        load_benchmark_config(config_path), tmp_path / "null_run"
+    )
+    nulls = pd.read_csv(outputs["benchmark_null_results"], sep="\t")
+
+    assert set(nulls["null_model"]) == {
+        "mononucleotide_shuffle",
+        "remove_scalar_e0",
+        "imaginary_axis_permutation",
+        "random_antisymmetric_tensor",
+        "randomized_fano_structure",
+    }
+    assert nulls["metric_value"].notna().all()
+    assert nulls.groupby("null_model")["null_iteration"].nunique().to_dict()[
+        "imaginary_axis_permutation"
+    ] == 2
+    assert nulls.groupby("null_model")["null_iteration"].nunique().to_dict()[
+        "random_antisymmetric_tensor"
+    ] == 2
+    assert nulls.groupby("null_model")["null_iteration"].nunique().to_dict()[
+        "randomized_fano_structure"
+    ] == 2
+    assert (tmp_path / "null_run" / "_null_models" / "mononucleotide_shuffle_000" / "sequences.fasta").exists()
+    assert all(json.loads(value)["status"] == "evaluated" for value in nulls["metadata_json"])
+
+
 def _write_fixture(
     tmp_path: Path,
     *,
@@ -208,12 +273,14 @@ def _write_fixture(
                 "seq_pos_1",
                 "seq_pos_2",
                 "seq_pos_3",
+                "seq_pos_4",
                 "seq_neg_1",
                 "seq_neg_2",
                 "seq_neg_3",
+                "seq_neg_4",
             ],
-            "label": ["pos", "pos", "pos", "neg", "neg", "neg"],
-            "subject": ["s1", "s2", "s3", "s4", "s5", "s6"],
+            "label": ["pos", "pos", "pos", "pos", "neg", "neg", "neg", "neg"],
+            "subject": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"],
         }
     )
     metadata.to_csv(tmp_path / "metadata.tsv", sep="\t", index=False)
@@ -221,9 +288,11 @@ def _write_fixture(
         ">seq_pos_1\nATGGCCATGGCCATGGCC\n"
         ">seq_pos_2\nATGAAAGCCATGAAAGCC\n"
         ">seq_pos_3\nGCCATGGCCATGGCCATG\n"
+        ">seq_pos_4\nATGGGGATGGGGATGGGG\n"
         ">seq_neg_1\nATATATATATATATATAT\n"
         ">seq_neg_2\nTTAATTAATTAATTAATT\n"
-        ">seq_neg_3\nACACACACACACACACAC\n",
+        ">seq_neg_3\nACACACACACACACACAC\n"
+        ">seq_neg_4\nTCTCTCTCTCTCTCTCTC\n",
         encoding="utf-8",
     )
     config = {

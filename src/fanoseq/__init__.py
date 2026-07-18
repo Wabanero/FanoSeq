@@ -1,5 +1,7 @@
 """FanoSeq: sequence trajectories in Fano-structured octonion space."""
 
+__version__ = "0.2.0"
+
 from fanoseq.axis_schemes import (
     AXIS_SCHEME_REGISTRY,
     list_axis_definitions,
@@ -24,4 +26,3 @@ __all__ = [
     "transform_octonion_rc",
     "validate_axis_scheme_definitions",
 ]
-__version__ = "0.1.0"

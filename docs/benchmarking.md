@@ -50,6 +50,7 @@ evaluation:
   random_seed: 42
   split_strategy: stratified_group
   primary_metric: balanced_accuracy
+  primary_comparator: kmer
 ```
 
 Paths are resolved relative to the configuration file. Supported task labels are
@@ -62,7 +63,7 @@ The benchmark compares:
 
 - raw FanoSeq window components `e0...e7`;
 - octonion product components `p0...p7`;
-- commutator and transition summaries;
+- commutator summaries (`transition_score` remains only as a legacy raw-table alias);
 - associator summaries;
 - Fano-line attribution summaries;
 - combined FanoSeq fingerprints;
@@ -89,9 +90,17 @@ raw descriptors
 -> fixed FanoSeq octonion/Fano-line interactions
 ```
 
+`evaluation.primary_comparator` is preregistered in the manifest and is the only
+ordinary feature family used for paired inference. The complete baseline ranking
+remains descriptive; it is not searched to choose the most favorable inferential
+comparison on the same outer-fold results.
+
 ## Dataset Registry
 
-The first curated study protocols live under `datasets/`:
+The curated study protocols live under `datasets/`:
+
+- `uci-splice-junction-v1`: UCI primate splice-junction classification with
+  source-gene grouping and an implemented public-source preparation script.
 
 - `coding-noncoding-v1`: GENCODE coding versus noncoding windows with
   chromosome-held-out splits.
@@ -114,9 +123,19 @@ pipeline. Nested CV uses inner folds only on the training portion of each outer
 fold.
 
 Use `group_column` for species, patient, chromosome, gene family, subject, or
-other dependence structure. The output includes exact fold assignments and a
-leakage-check table. A simple optional train/test sequence-similarity audit can
-flag highly similar sequences across folds.
+other dependence structure. Grouped splitting is fail-closed: missing groups,
+too few groups, or a class confined to one group raise `BenchmarkSplitError`.
+`evaluation.allow_unsafe_split_fallback: true` is the only way to request an
+ungrouped fallback; every affected fold, manifest, report, and plot is then
+marked unsafe. Fold counts are never reduced silently.
+
+The optional lightweight similarity audit is named *positional identity*: it is
+an ungapped position-by-position diagnostic, not alignment identity and not a
+homology estimate. For biological studies, create homology clusters with a
+dedicated aligner/clustering tool and use the cluster ID as `group_column`.
+The tool-agnostic `fanoseq prepare-homology-groups` workflow validates complete
+cluster assignments and records tool/version, thresholds, and hashes; see
+`docs/homology_splitting.md`.
 
 ## Outputs
 
@@ -127,6 +146,7 @@ The command writes TSV or Parquet tables:
 - `benchmark_metrics`
 - `benchmark_predictions`
 - `benchmark_feature_sets`
+- `benchmark_feature_quality`
 - `benchmark_ablation_results`
 - `benchmark_null_results`
 - `benchmark_permutation_tests`
@@ -141,12 +161,23 @@ limitations.
 
 ## Null Models And Ablations
 
-The benchmark package provides sequence null-model generators for
+The benchmark executes sequence null models for
 mononucleotide shuffling, dinucleotide-preserving shuffling, codon-order
-shuffling, synonymous-codon replacement, and label permutation. It also provides
-representation perturbations for imaginary-axis permutation, sign flips, random
-orthogonal transforms, Fano-line relabeling, scalar removal, and random
-antisymmetric interaction tensors.
+shuffling, synonymous-codon replacement, and label permutation. Generated FASTA
+files are written under `_null_models/`; features are rebuilt and evaluated with
+the original fold assignments and model protocol. Executed representation nulls
+include scalar removal, imaginary-axis permutation, randomized Fano structure,
+and random antisymmetric interaction tensors. Repeat counts and seeds are stored
+in the resolved configuration, and null tables contain finite model metrics
+rather than availability placeholders.
+
+Feature-quality diagnostics report constant, near-zero-variance, exact duplicate,
+and perfectly correlated columns. The corresponding filter is fitted inside
+each training fold; the full-data diagnostics table is descriptive only.
+
+Codon RSCU uses `feature_extraction.rscu_stop_policy`. The default `exclude`
+does not treat all termination signals as one conventional synonymous family;
+`separate` treats each stop separately and `pooled` restores the legacy behavior.
 
 Axis permutations are not automatically called octonion automorphisms. The
 utility `is_oriented_fano_automorphism` checks whether a coordinate permutation

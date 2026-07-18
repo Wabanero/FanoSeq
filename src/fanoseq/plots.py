@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
@@ -332,7 +332,7 @@ def _base_canvas(title: str) -> tuple[Image.Image, ImageDraw.ImageDraw, list[tup
             x0 = left + column * (width + gap_x)
             y0 = top + row * (height + gap_y)
             panels.append((x0, y0, x0 + width, y0 + height))
-    return image, draw, panels, fonts
+    return image, draw, panels, cast(dict[str, ImageFont.ImageFont], fonts)
 
 
 def _select_sequence(table: pd.DataFrame, sequence_id: str | None) -> pd.DataFrame:
@@ -666,9 +666,22 @@ def _benchmark_summary_lines(
         if "sequence_similarity_leakage_detected" in leakage
         else 0
     )
+    unsafe_fallbacks = (
+        int(
+            pd.to_numeric(
+                leakage["unsafe_split_fallback"], errors="coerce"
+            ).fillna(0).sum()
+        )
+        if "unsafe_split_fallback" in leakage
+        else 0
+    )
     max_identity = (
-        float(pd.to_numeric(leakage["max_train_test_identity"], errors="coerce").max())
-        if "max_train_test_identity" in leakage and not leakage.empty
+        float(
+            pd.to_numeric(
+                leakage["max_train_test_positional_identity"], errors="coerce"
+            ).max()
+        )
+        if "max_train_test_positional_identity" in leakage and not leakage.empty
         else np.nan
     )
     similarity_threshold = (
@@ -682,9 +695,18 @@ def _benchmark_summary_lines(
         f"sequences: {run.get('n_sequences', 'NA')}",
         f"primary metric: {primary_metric}",
         f"feature sets / models: {feature_sets} / {models}",
+        (
+            f"WARNING: UNSAFE SPLIT FALLBACKS: {unsafe_fallbacks}"
+            if unsafe_fallbacks
+            else "unsafe split fallbacks: 0"
+        ),
         f"group leakage splits: {group_leaks}",
         f"similarity leakage splits: {similarity_leaks}",
-        f"max train-test identity: {max_identity:.3f}" if np.isfinite(max_identity) else "max train-test identity: NA",
+        (
+            f"max train-test positional identity: {max_identity:.3f}"
+            if np.isfinite(max_identity)
+            else "max train-test positional identity: NA"
+        ),
         (
             f"similarity leakage threshold: {similarity_threshold:.3f}"
             if np.isfinite(similarity_threshold)

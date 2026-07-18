@@ -29,6 +29,7 @@ def test_dataset_registry_manifests_are_parseable() -> None:
         "coding-noncoding-v1",
         "taxonomy-v1",
         "mutation-effect-v1",
+        "uci-splice-junction-v1",
     }
 
     for study in studies:

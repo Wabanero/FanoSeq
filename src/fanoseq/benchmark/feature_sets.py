@@ -97,6 +97,45 @@ def feature_set_table(feature_sets: dict[str, FeatureSet]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def feature_quality_table(feature_sets: dict[str, FeatureSet]) -> pd.DataFrame:
+    """Describe degeneracy in each full feature matrix for reporting only.
+
+    Model fitting repeats the filtering inside each training fold; this table must not be
+    used to pre-filter cross-validation inputs.
+    """
+    from fanoseq.benchmark.models import TrainingFoldFeatureFilter
+
+    rows: list[dict[str, object]] = []
+    for feature_set in feature_sets.values():
+        columns = feature_set.feature_columns
+        if not columns:
+            continue
+        values = feature_set.matrix[columns].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+        quality_filter = TrainingFoldFeatureFilter().fit(values.to_numpy(dtype=float))
+        retained = set(int(index) for index in quality_filter.keep_indices_)
+        for index, column in enumerate(columns):
+            reason = quality_filter.removed_features_.get(index, "retained")
+            reference_index: int | None = None
+            if "_of_" in reason:
+                reference_index = int(reason.rsplit("_", 1)[-1])
+            elif "_with_" in reason:
+                reference_index = int(reason.rsplit("_", 1)[-1])
+            rows.append(
+                {
+                    "feature_set": feature_set.name,
+                    "feature": column,
+                    "variance": float(np.var(values.iloc[:, index].to_numpy(dtype=float))),
+                    "status": "retained" if index in retained else "removed_in_full_data_audit",
+                    "reason": reason,
+                    "reference_feature": (
+                        columns[reference_index] if reference_index is not None else ""
+                    ),
+                    "selection_scope": "diagnostic_only; model filtering is training-fold-local",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def matrix_for_ids(feature_set: FeatureSet, sequence_ids: tuple[str, ...]) -> pd.DataFrame:
     """Return a matrix aligned to the benchmark sequence order."""
     matrix = feature_set.matrix.copy()
@@ -249,10 +288,13 @@ def _build_fano_tables(
         window_size=window_size if mode in {"window", "both"} else None,
         step=config.feature_extraction.step,
         kmer_k=config.feature_extraction.kmer_k,
+        epsilon=config.feature_extraction.epsilon,
         max_ambiguous_fraction=config.feature_extraction.max_ambiguous_fraction,
         frame=config.feature_extraction.frame,
         codon_table=config.feature_extraction.codon_table,
+        include_partial_codons=config.feature_extraction.include_partial_codons,
         include_stop_codons=config.feature_extraction.include_stop_codons,
+        rscu_stop_policy=config.feature_extraction.rscu_stop_policy,
         codon_normalize=config.feature_extraction.codon_normalize,
         window_axis_scheme=config.feature_extraction.window_axis_scheme,
         codon_axis_scheme=config.feature_extraction.codon_axis_scheme,
@@ -275,6 +317,7 @@ def _build_baseline_tables(
             kmer_k=config.feature_extraction.kmer_k,
             genetic_code=genetic_code,
             frame=config.feature_extraction.frame,
+            rscu_stop_policy=config.feature_extraction.rscu_stop_policy,
         )
     return build_baseline_tables(
         dataset.records,
@@ -319,13 +362,16 @@ def _fanoseq_commutators(tables: dict[str, pd.DataFrame]) -> FeatureSet:
     source = tables.get("octonion_products", pd.DataFrame())
     matrix = _summarize(
         source,
-        ["commutator_score", "transition_score"],
+        ["commutator_score"],
         prefix="commutator",
     )
     return FeatureSet(
         name="fanoseq_commutators",
         family="fanoseq",
-        description="Commutator and transition-score summaries for adjacent windows.",
+        description=(
+            "Adjacent-window commutator summaries. The legacy transition_score alias is "
+            "excluded because it is exactly equal to commutator_score."
+        ),
         matrix=matrix,
         source_tables=("octonion_products",),
     )
@@ -519,11 +565,23 @@ def _randomized_fano_structure(
     config: BenchmarkConfig,
     tables: dict[str, pd.DataFrame],
 ) -> FeatureSet:
+    return randomized_fano_control_feature_set(
+        tables,
+        random_seed=config.evaluation.random_seed,
+    )
+
+
+def randomized_fano_control_feature_set(
+    tables: dict[str, pd.DataFrame],
+    *,
+    random_seed: int,
+) -> FeatureSet:
+    """Build one seeded randomized-Fano control representation."""
     source = tables.get("window_octonions", pd.DataFrame())
     matrix = _randomized_antisymmetric_summaries(
         source,
         prefix="random_fano",
-        random_seed=config.evaluation.random_seed,
+        random_seed=random_seed,
     )
     return FeatureSet(
         name="randomized_fano_structure",
@@ -625,11 +683,22 @@ def _numeric_by_sequence(source: pd.DataFrame, *, prefix: str) -> pd.DataFrame:
 
 
 def _merge_feature_matrices(feature_sets: list[FeatureSet]) -> pd.DataFrame:
-    matrices = [feature_set.matrix for feature_set in feature_sets if not feature_set.matrix.empty]
-    if not matrices:
+    available = [
+        (feature_set, feature_set.matrix)
+        for feature_set in feature_sets
+        if not feature_set.matrix.empty
+    ]
+    if not available:
         return pd.DataFrame(columns=["sequence_id"])
-    merged = matrices[0].copy()
-    for feature_set, matrix in zip(feature_sets[1:], matrices[1:]):
+    first_feature_set, first_matrix = available[0]
+    merged = first_matrix.rename(
+        columns={
+            column: f"{first_feature_set.name}__{column}"
+            for column in first_matrix.columns
+            if column != "sequence_id"
+        }
+    ).copy()
+    for feature_set, matrix in available[1:]:
         renamed = matrix.rename(
             columns={
                 column: f"{feature_set.name}__{column}"

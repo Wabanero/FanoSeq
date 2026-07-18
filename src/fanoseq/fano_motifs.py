@@ -25,12 +25,13 @@ def fano_triad_counts(
     examples: dict[tuple[int, int, int, bool], str] = {}
     for start in range(0, max(len(cleaned) - 2, 0), stride):
         triplet = cleaned[start : start + 3]
-        axes = tuple(symbol_to_axis.get(symbol, -1) for symbol in triplet)
+        axis_a, axis_b, axis_c = (symbol_to_axis.get(symbol, -1) for symbol in triplet)
+        axes = (axis_a, axis_b, axis_c)
         if any(axis < 1 or axis > 7 for axis in axes):
             continue
         line = FANO_LINE_SETS.get(frozenset(axes))
         is_fano_line = line is not None
-        key = (*axes, is_fano_line)
+        key = (axis_a, axis_b, axis_c, is_fano_line)
         counter[key] += 1
         examples.setdefault(key, ",".join(triplet))
 

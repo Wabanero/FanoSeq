@@ -6,7 +6,7 @@ import hashlib
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ from fanoseq.codon_features import codon_entropy, encode_codon, iter_codons
 from fanoseq.dna_features import encode_dna_window
 from fanoseq.fano_attribution import fano_line_attribution
 from fanoseq.fano_plane import build_fano_line_features
-from fanoseq.fasta import read_fasta
+from fanoseq.fasta import FastaRecord, read_fasta
 from fanoseq.fingerprints import build_sequence_fingerprints
 from fanoseq.genetic_code import GeneticCode, all_standard_codons, get_genetic_code
 from fanoseq.io import OutputFormat, write_outputs
@@ -158,6 +158,7 @@ CODON_USAGE_COLUMNS = [
     "frequency",
     "synonymous_family_size",
     "rscu",
+    "rscu_stop_policy",
     "mean_e0",
     "mean_e1",
     "mean_e2",
@@ -231,6 +232,7 @@ class RunConfig:
     codon_table: str | int = "standard"
     include_partial_codons: bool = False
     include_stop_codons: bool = True
+    rscu_stop_policy: Literal["exclude", "separate", "pooled"] = "exclude"
     codon_normalize: bool = False
     window_axis_scheme: str | None = None
     codon_axis_scheme: str | None = None
@@ -329,7 +331,7 @@ def run_analysis(config: RunConfig) -> dict[str, pd.DataFrame]:
 
 
 def build_window_octonions(
-    records: object,
+    records: Iterable[FastaRecord],
     config: RunConfig,
     axis_scheme_id: str | None = None,
 ) -> pd.DataFrame:
@@ -509,7 +511,7 @@ def build_window_summary(
 
 
 def build_codon_octonions(
-    records: object,
+    records: Iterable[FastaRecord],
     config: RunConfig,
     genetic_code: GeneticCode,
     axis_scheme_id: str = "codon-product-v1",
@@ -529,7 +531,7 @@ def build_codon_octonions(
                 )
                 if encoded is None:
                     continue
-                row = {
+                row: dict[str, object] = {
                     "sequence_id": record.id,
                     "frame": frame,
                     "codon_index": codon_slice.codon_index,
@@ -617,9 +619,18 @@ def build_codon_usage(
         grouped_by_codon = {codon: values for codon, values in group.groupby("codon", sort=False)}
         for codon in codons64:
             aa = genetic_code.amino_acid(codon)
-            family = genetic_code.synonymous_codons(aa)
+            if aa == "*" and config.rscu_stop_policy == "exclude":
+                family: list[str] = []
+            elif aa == "*" and config.rscu_stop_policy == "separate":
+                family = [codon]
+            else:
+                family = genetic_code.synonymous_codons(aa)
             family_size = len(family)
-            total_for_aa = family_totals.get(aa, 0)
+            total_for_aa = (
+                counts[codon]
+                if aa == "*" and config.rscu_stop_policy == "separate"
+                else family_totals.get(aa, 0)
+            )
             observed = counts[codon]
             expected = total_for_aa / family_size if family_size and total_for_aa else 0.0
             rscu = observed / expected if expected else 0.0
@@ -651,6 +662,7 @@ def build_codon_usage(
                 "frequency": observed / total_valid if total_valid else 0.0,
                 "synonymous_family_size": family_size,
                 "rscu": rscu,
+                "rscu_stop_policy": config.rscu_stop_policy,
                 "mean_codon_associator_score": mean_assoc,
             }
             row.update({f"mean_e{i}": mean_components[i] for i in range(8)})
@@ -728,10 +740,14 @@ def _validate_config(config: RunConfig) -> None:
         raise ValueError("--step must be > 0.")
     if config.kmer_k <= 0:
         raise ValueError("--kmer-k must be > 0.")
+    if config.epsilon <= 0:
+        raise ValueError("--epsilon must be > 0.")
     if config.max_ambiguous_fraction < 0 or config.max_ambiguous_fraction > 1:
         raise ValueError("--max-ambiguous-fraction must be between 0 and 1.")
     if config.frame != "all" and int(config.frame) not in {0, 1, 2}:
         raise ValueError("--frame must be 0, 1, 2, or all.")
+    if config.rscu_stop_policy not in {"exclude", "separate", "pooled"}:
+        raise ValueError("--rscu-stop-policy must be exclude, separate, or pooled.")
     if config.output_format not in {"tsv", "parquet", "bundle"}:
         raise ValueError("--output-format must be one of: tsv, parquet, bundle.")
     if config.top_k_transitions is not None and config.top_k_transitions <= 0:
@@ -776,19 +792,24 @@ def _filter_product_events(
         filtered = filtered.nlargest(config.top_k_transitions, "transition_score")
 
     filtered = filtered.reset_index(drop=True)
+    event_keys: set[tuple[str, str, int]]
     if mode == "window":
         event_keys = {
             (str(row["sequence_id"]), "NA", int(row["position"])) for _, row in filtered.iterrows()
         }
     else:
         event_keys = {
-            (str(row["sequence_id"]), int(row["frame"]), int(row["position"]))
+            (str(row["sequence_id"]), str(int(row["frame"])), int(row["position"]))
             for _, row in filtered.iterrows()
         }
     filtered_fano = [
         row
         for row in fano_rows
-        if (str(row["sequence_id"]), row["frame"], int(row["position"])) in event_keys
+        if (
+            str(row["sequence_id"]),
+            str(row["frame"]),
+            int(str(row["position"])),
+        ) in event_keys
     ]
     return filtered, filtered_fano
 
@@ -845,6 +866,7 @@ def _build_manifest(
             "codon_table": config.codon_table,
             "include_partial_codons": config.include_partial_codons,
             "include_stop_codons": config.include_stop_codons,
+            "rscu_stop_policy": config.rscu_stop_policy,
             "codon_normalize": config.codon_normalize,
             "window_axis_scheme": window_axis_scheme_id,
             "codon_axis_scheme": codon_axis_scheme_id,

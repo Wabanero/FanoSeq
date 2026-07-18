@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,6 +104,7 @@ def main() -> None:
     parser.add_argument("--min-length", default=300, type=int)
     parser.add_argument("--max-length", default=3000, type=int)
     parser.add_argument("--max-records", default=500, type=int)
+    parser.add_argument("--random-seed", default=42, type=int)
     args = parser.parse_args()
 
     records = [
@@ -117,10 +120,11 @@ def main() -> None:
     out_metadata = args.output_dir / "metadata.tsv"
 
     metadata_rows: list[dict[str, object]] = []
+    rng = random.Random(args.random_seed)
     with out_fasta.open("w", encoding="utf-8") as fasta_handle:
         for record in records:
             base = _clean_cds(record.sequence, max_length=args.max_length)
-            for perturbation_class, sequence, edit_count in _perturbations(base):
+            for perturbation_class, sequence, edit_count, preserves_translation, preserves_codons in _perturbations(base, rng):
                 sequence_id = f"{record.sequence_id}|{perturbation_class}"
                 fasta_handle.write(f">{sequence_id}\n{_wrap(sequence)}\n")
                 metadata_rows.append(
@@ -130,10 +134,30 @@ def main() -> None:
                         "parent_cds_id": record.sequence_id,
                         "edit_count": edit_count,
                         "length": len(sequence),
+                        "preserves_translation": preserves_translation,
+                        "preserves_codon_counts": preserves_codons,
                     }
                 )
     _write_metadata(out_metadata, metadata_rows)
     _write_hashes(args.output_dir / "input_hashes.tsv", out_fasta, out_metadata)
+    (args.output_dir / "provenance.json").write_text(
+        json.dumps(
+            {
+                "source_cds_fasta": str(args.cds_fasta.resolve()),
+                "source_cds_sha256": _sha256(args.cds_fasta),
+                "random_seed": args.random_seed,
+                "min_length": args.min_length,
+                "max_length": args.max_length,
+                "max_records": args.max_records,
+                "parent_records": len(records),
+                "prepared_records": len(metadata_rows),
+                "controls": ["codon_order_shuffle", "synonymous_recoding"],
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _read_fasta(path: Path) -> list[FastaRecord]:
@@ -168,20 +192,26 @@ def _clean_cds(sequence: str, *, max_length: int) -> str:
     return cleaned[: len(cleaned) - (len(cleaned) % 3)]
 
 
-def _perturbations(sequence: str) -> list[tuple[str, str, int]]:
+def _perturbations(
+    sequence: str, rng: random.Random
+) -> list[tuple[str, str, int, bool, bool]]:
+    codon_shuffled = _codon_order_shuffle(sequence, rng)
+    synonymous_recoded = _synonymous_recode(sequence)
     candidates = [
-        ("reference", sequence, 0),
-        ("synonymous_substitution", _synonymous(sequence), 1),
-        ("transition", _single_base(sequence, TRANSITIONS), 1),
-        ("transversion", _single_base(sequence, TRANSVERSIONS), 1),
-        ("conservative_amino_acid_change", _amino_acid_change(sequence, conservative=True), 1),
-        ("radical_amino_acid_change", _amino_acid_change(sequence, conservative=False), 1),
-        ("premature_stop", _premature_stop(sequence), 1),
-        ("frameshift", _frameshift(sequence), 1),
+        ("reference", sequence, 0, True, True),
+        ("synonymous_substitution", _synonymous(sequence), 1, True, False),
+        ("synonymous_recoding", synonymous_recoded, _codon_edit_count(sequence, synonymous_recoded), True, False),
+        ("codon_order_shuffle", codon_shuffled, _codon_edit_count(sequence, codon_shuffled), False, True),
+        ("transition", _single_base(sequence, TRANSITIONS), 1, False, False),
+        ("transversion", _single_base(sequence, TRANSVERSIONS), 1, False, False),
+        ("conservative_amino_acid_change", _amino_acid_change(sequence, conservative=True), 1, False, False),
+        ("radical_amino_acid_change", _amino_acid_change(sequence, conservative=False), 1, False, False),
+        ("premature_stop", _premature_stop(sequence), 1, False, False),
+        ("frameshift", _frameshift(sequence), 1, False, False),
     ]
     return [
-        (label, mutated, edit_count)
-        for label, mutated, edit_count in candidates
+        (label, mutated, edit_count, preserves_translation, preserves_codons)
+        for label, mutated, edit_count, preserves_translation, preserves_codons in candidates
         if (
             mutated is not None
             and mutated
@@ -197,6 +227,35 @@ def _synonymous(sequence: str) -> str | None:
         if aa not in {None, "*"} and synonyms:
             return _replace(sequence, start, synonyms[0])
     return None
+
+
+def _synonymous_recode(sequence: str) -> str | None:
+    recoded: list[str] = []
+    changed = False
+    for _, codon in _codons(sequence):
+        aa = GENETIC_CODE.get(codon)
+        alternatives = [candidate for candidate in CODONS_BY_AA.get(aa or "", []) if candidate != codon]
+        if aa not in {None, "*"} and alternatives:
+            recoded.append(sorted(alternatives)[0])
+            changed = True
+        else:
+            recoded.append(codon)
+    result = "".join(recoded)
+    return result if changed else None
+
+
+def _codon_order_shuffle(sequence: str, rng: random.Random) -> str | None:
+    codons = [codon for _, codon in _codons(sequence)]
+    shuffled = codons.copy()
+    rng.shuffle(shuffled)
+    result = "".join(shuffled)
+    return result if result != sequence else None
+
+
+def _codon_edit_count(original: str, changed: str | None) -> int:
+    if changed is None:
+        return 0
+    return sum(left != right for left, right in zip(_codons(original), _codons(changed)))
 
 
 def _single_base(sequence: str, mapping: dict[str, str]) -> str | None:
@@ -267,6 +326,8 @@ def _write_metadata(path: Path, rows: list[dict[str, object]]) -> None:
                 "parent_cds_id",
                 "edit_count",
                 "length",
+                "preserves_translation",
+                "preserves_codon_counts",
             ),
             delimiter="\t",
         )

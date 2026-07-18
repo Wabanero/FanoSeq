@@ -8,11 +8,21 @@ policy: >
   prepare script, record input hashes, and commit only small manifests unless
   source licenses permit redistribution.
 studies:
+  - dataset_id: uci-splice-junction-v1
+    title: Primate splice-junction classification
+    path: splice_junction/dataset.yaml
+    benchmark_config: splice_junction/benchmark.yaml
+    status: public_source_and_preparation_implemented
+    primary_holdout: source_gene
+    purpose: >
+      Provide a compact, reproducible real-data benchmark for donor,
+      acceptor, and non-junction DNA sequence classification with gene-grouped
+      held-out evaluation.
   - dataset_id: coding-noncoding-v1
     title: Coding versus noncoding DNA windows
     path: coding_noncoding/dataset.yaml
     benchmark_config: coding_noncoding/benchmark.yaml
-    status: source_release_selected
+    status: matching_preparation_implemented_requires_curated_source
     primary_holdout: chromosome
     purpose: >
       Test whether FanoSeq window and codon features improve coding/noncoding
@@ -32,7 +42,7 @@ studies:
     title: Controlled coding-sequence perturbation sensitivity
     path: mutation_effect/dataset.yaml
     benchmark_config: mutation_effect/benchmark.yaml
-    status: protocol_defined
+    status: preparation_implemented_requires_curated_source
     primary_holdout: parent_cds
     purpose: >
       Test whether representation distances respond monotonically and

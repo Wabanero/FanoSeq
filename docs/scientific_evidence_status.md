@@ -11,9 +11,9 @@ evidence.
 | Codon encoder | experimental | audited | pending |
 | Fano-line features | experimental | algebraically validated | pending |
 | Matrix genetics | exploratory | partially validated | not predictive |
-| Benchmark engine | beta | tested | datasets pending |
+| Benchmark engine | beta | fail-closed split and null-model tests | real-data results pending |
 | Protein encoder | experimental | partial | unvalidated |
-| Dataset registry | initial | schema-smoke-tested | data preparation pending |
+| Dataset registry | initial | schema-smoke-tested | UCI splice preparation implemented; no frozen result yet |
 | Methods report | protocol | not applicable | results pending |
 
 ## Interpretation Policy
@@ -26,4 +26,6 @@ evidence.
   baselines, nonlinear controls, external validation, and negative results.
 - Benchmark success is task-specific. It is not evidence for an intrinsic
   octonionic mechanism in biology.
-
+- No bundled smoke test, synthetic fixture, or successful software run counts as
+  biological validation. As of 2026-07-18 the repository contains no frozen
+  held-out result meeting the biological acceptance criteria.

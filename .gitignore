@@ -7,4 +7,5 @@ build/
 dist/
 *.egg-info/
 results/
-
+datasets/**/raw/
+datasets/**/prepared/

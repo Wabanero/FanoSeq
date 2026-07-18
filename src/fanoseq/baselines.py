@@ -37,6 +37,7 @@ def build_baseline_tables(
     kmer_k: int,
     genetic_code: GeneticCode | None = None,
     frame: int | Literal["all"] = 0,
+    rscu_stop_policy: Literal["exclude", "separate", "pooled"] = "exclude",
 ) -> dict[str, pd.DataFrame]:
     """Build benchmark baseline tables for DNA or protein records."""
     if kmer_k <= 0:
@@ -45,7 +46,9 @@ def build_baseline_tables(
     if seq_type == "dna":
         if genetic_code is None:
             raise ValueError("DNA baselines require a genetic code.")
-        return build_dna_baseline_tables(record_list, kmer_k, genetic_code, frame)
+        return build_dna_baseline_tables(
+            record_list, kmer_k, genetic_code, frame, rscu_stop_policy
+        )
     if seq_type == "protein":
         return build_protein_baseline_tables(record_list, kmer_k)
     raise ValueError("seq_type must be either 'dna' or 'protein'.")
@@ -56,6 +59,7 @@ def build_dna_baseline_tables(
     kmer_k: int,
     genetic_code: GeneticCode,
     frame: int | Literal["all"] = 0,
+    rscu_stop_policy: Literal["exclude", "separate", "pooled"] = "exclude",
 ) -> dict[str, pd.DataFrame]:
     """Build DNA baseline feature tables: composition, k-mers/FCGR, codon usage."""
     sequence_rows: list[dict[str, object]] = []
@@ -125,6 +129,7 @@ def build_dna_baseline_tables(
                     cleaned,
                     reading_frame,
                     genetic_code,
+                    rscu_stop_policy,
                 )
             )
 
@@ -242,6 +247,7 @@ def codon_usage_rows(
     sequence: str,
     frame: int,
     genetic_code: GeneticCode,
+    rscu_stop_policy: Literal["exclude", "separate", "pooled"] = "exclude",
 ) -> list[dict[str, object]]:
     """Build codon-usage baseline rows for one sequence and frame."""
     observed_codons = [
@@ -259,9 +265,18 @@ def codon_usage_rows(
     rows = []
     for codon in all_standard_codons():
         aa = genetic_code.amino_acid(codon)
-        family = genetic_code.synonymous_codons(aa)
+        if aa == "*" and rscu_stop_policy == "exclude":
+            family: list[str] = []
+        elif aa == "*" and rscu_stop_policy == "separate":
+            family = [codon]
+        else:
+            family = genetic_code.synonymous_codons(aa)
         family_size = len(family)
-        total_for_aa = family_totals.get(aa, 0)
+        total_for_aa = (
+            counts[codon]
+            if aa == "*" and rscu_stop_policy == "separate"
+            else family_totals.get(aa, 0)
+        )
         expected = total_for_aa / family_size if family_size and total_for_aa else 0.0
         observed = counts[codon]
         rows.append(
@@ -276,6 +291,7 @@ def codon_usage_rows(
                 "gc3": 1.0 if codon[2] in {"G", "C"} else 0.0,
                 "synonymous_family_size": family_size,
                 "rscu": observed / expected if expected else 0.0,
+                "rscu_stop_policy": rscu_stop_policy,
             }
         )
     return rows

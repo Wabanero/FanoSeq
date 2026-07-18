@@ -1,0 +1,49 @@
+dataset:
+  table: prepared/metadata.tsv
+  fasta: prepared/sequences.fasta
+  id_column: sequence_id
+  target_column: label
+  group_column: source_gene
+  task: classification
+  seq_type: dna
+
+features:
+  - nucleotide_composition
+  - kmer
+  - fcgr
+  - codon_usage
+  - fanoseq_components
+  - fanoseq_products
+  - fanoseq_commutators
+  - fanoseq_associators
+  - fanoseq_fano_lines
+  - fanoseq_fingerprints
+  - real_polynomial_control
+  - antisymmetric_control
+  - randomized_fano_structure
+  - random_projection_control
+
+feature_extraction:
+  window_size: 30
+  step: 10
+  kmer_k: 3
+  frame: all
+  max_ambiguous_fraction: 0.0
+  window_axis_scheme: dna-window-v1
+  codon_axis_scheme: codon-product-v1
+
+evaluation:
+  outer_folds: 3
+  inner_folds: 2
+  repeats: 1
+  random_seed: 42
+  split_strategy: stratified_group
+  primary_metric: balanced_accuracy
+  models:
+    - logistic_regression
+  output_format: tsv
+  sequence_similarity_audit: true
+  sequence_similarity_threshold: 0.9
+  paired_permutation_rounds: 199
+  run_ablations: true
+  n_jobs: -1

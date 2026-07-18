@@ -5,6 +5,35 @@ work, and external benchmark context. None of these references alone validates
 FanoSeq's biological usefulness; that requires the benchmark studies in
 `datasets/`.
 
+## Dataset releases
+
+### GENCODE Human Release 50
+
+- Release: GENCODE Human Release 50, GRCh38.p14, released June 2026.
+- Official release page: https://www.gencodegenes.org/human/
+- Project citation: Mudge JM, Carbonell-Sala S, Diekhans M, et al. GENCODE
+  2025: reference gene annotation for human and mouse. Nucleic Acids Research.
+  2025;53(D1):D966-D975. DOI: 10.1093/nar/gkae1078.
+- Use in FanoSeq: pinned source candidate for coding/noncoding and controlled
+  coding-sequence perturbation studies; no prepared result is bundled.
+
+### SILVA SSU Ref NR 99 Release 138.2
+
+- Release: SILVA SSU Ref NR 99 138.2, 11 July 2024.
+- Official release page: https://www.arb-silva.de/documentation/release-1382/
+- Dataset DOI: 10.82364/138.2/SSU/Ref-NR99/FASTA/unaligned/truncated.
+- Project citation: Quast C, Pruesse E, Yilmaz P, et al. The SILVA ribosomal
+  RNA gene database project: improved data processing and web-based tools.
+  Nucleic Acids Research. 2013;41(D1):D590-D596. DOI: 10.1093/nar/gks1219.
+
+### UCI Splice-junction Gene Sequences
+
+- Dataset: Molecular Biology (Splice-junction Gene Sequences), UCI dataset 69.
+- Official page: https://archive.ics.uci.edu/dataset/69/molecular%2Bbiology%2Bsplice%2Bjunction%2Bgene%2Bsequences
+- Dataset DOI: 10.24432/C5M888.
+- Use in FanoSeq: compact historical workflow benchmark; not a modern external
+  validation claim.
+
 ## Octonion And Fano-Plane Mathematics
 
 ### Baez 2002
@@ -224,4 +253,3 @@ FanoSeq's biological usefulness; that requires the benchmark studies in
   held-out biological tasks.
 - What it does not support: no validation of hand-designed FanoSeq axes or
   octonion multiplication.
-

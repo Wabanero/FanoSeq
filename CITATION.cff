@@ -1,13 +1,13 @@
 cff-version: 1.2.0
 message: "If you use FanoSeq in evaluation or research discussion, cite it as below."
 title: "FanoSeq: sequence trajectories in Fano-structured octonion space"
-version: 0.1.0
-date-released: "2026-07-12"
+version: 0.2.0
+date-released: "2026-07-18"
 type: software
 authors:
   - family-names: Bergeretti
     given-names: Filippo
-repository-code: "https://github.com/fbergeretti/FanoSeq"
+repository-code: "https://github.com/Wabanero/FanoSeq"
 abstract: >
   FanoSeq is a source-available feature-engineering framework for mapping
   biological sequences into Fano-structured octonion descriptors and comparing
@@ -18,4 +18,3 @@ keywords:
   - octonions
   - Fano plane
   - alignment-free features
-

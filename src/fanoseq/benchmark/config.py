@@ -17,6 +17,7 @@ BenchmarkTask = Literal[
 SplitStrategy = Literal["stratified", "group", "stratified_group", "kfold"]
 SequenceType = Literal["dna", "protein"]
 OutputFormat = Literal["tsv", "parquet"]
+RSCUStopPolicy = Literal["exclude", "separate", "pooled"]
 
 DEFAULT_FEATURES = (
     "fanoseq_components",
@@ -57,10 +58,13 @@ class FeatureExtractionConfig:
     window_size: int = 12
     step: int = 1
     kmer_k: int = 3
+    epsilon: float = 1e-9
+    include_partial_codons: bool = False
     frame: int | Literal["all"] = 0
     codon_table: str = "standard"
     max_ambiguous_fraction: float = 0.0
     include_stop_codons: bool = True
+    rscu_stop_policy: RSCUStopPolicy = "exclude"
     codon_normalize: bool = False
     window_axis_scheme: str | None = None
     codon_axis_scheme: str | None = None
@@ -77,10 +81,12 @@ class EvaluationConfig:
     random_seed: int = 42
     split_strategy: SplitStrategy = "stratified_group"
     primary_metric: str = "balanced_accuracy"
+    primary_comparator: str = "kmer"
     models: tuple[str, ...] = ()
     output_format: OutputFormat = "tsv"
     sequence_similarity_audit: bool = False
     sequence_similarity_threshold: float = 0.95
+    allow_unsafe_split_fallback: bool = False
     paired_permutation_rounds: int = 999
     run_ablations: bool = True
     feature_selection: bool = False
@@ -94,6 +100,10 @@ class NullModelConfig:
     sequence_nulls: tuple[str, ...] = ()
     representation_nulls: tuple[str, ...] = ()
     label_permutations: int = 0
+    sequence_null_repeats: int = 1
+    randomized_fano_repeats: int = 1
+    random_tensor_repeats: int = 1
+    axis_permutation_repeats: int = 1
     random_seed: int | None = None
 
 
@@ -163,10 +173,15 @@ def parse_benchmark_config(
         window_size=int(extraction_raw.get("window_size", 12)),
         step=int(extraction_raw.get("step", 1)),
         kmer_k=int(extraction_raw.get("kmer_k", 3)),
+        epsilon=float(extraction_raw.get("epsilon", 1e-9)),
+        include_partial_codons=bool(extraction_raw.get("include_partial_codons", False)),
         frame=_frame(extraction_raw.get("frame", 0)),
         codon_table=str(extraction_raw.get("codon_table", "standard")),
         max_ambiguous_fraction=float(extraction_raw.get("max_ambiguous_fraction", 0.0)),
         include_stop_codons=bool(extraction_raw.get("include_stop_codons", True)),
+        rscu_stop_policy=cast(
+            RSCUStopPolicy, str(extraction_raw.get("rscu_stop_policy", "exclude"))
+        ),
         codon_normalize=bool(extraction_raw.get("codon_normalize", False)),
         window_axis_scheme=_optional_str(extraction_raw.get("window_axis_scheme")),
         codon_axis_scheme=_optional_str(extraction_raw.get("codon_axis_scheme")),
@@ -181,6 +196,7 @@ def parse_benchmark_config(
             str(evaluation_raw.get("split_strategy", "stratified_group"))
         ),
         primary_metric=str(evaluation_raw.get("primary_metric", "balanced_accuracy")),
+        primary_comparator=str(evaluation_raw.get("primary_comparator", "kmer")),
         models=tuple(str(item) for item in evaluation_raw.get("models", ())),
         output_format=_output_format(str(evaluation_raw.get("output_format", "tsv"))),
         sequence_similarity_audit=bool(
@@ -188,6 +204,9 @@ def parse_benchmark_config(
         ),
         sequence_similarity_threshold=float(
             evaluation_raw.get("sequence_similarity_threshold", 0.95)
+        ),
+        allow_unsafe_split_fallback=bool(
+            evaluation_raw.get("allow_unsafe_split_fallback", False)
         ),
         paired_permutation_rounds=int(evaluation_raw.get("paired_permutation_rounds", 999)),
         run_ablations=bool(evaluation_raw.get("run_ablations", True)),
@@ -198,6 +217,10 @@ def parse_benchmark_config(
         sequence_nulls=tuple(str(item) for item in null_raw.get("sequence_nulls", ())),
         representation_nulls=tuple(str(item) for item in null_raw.get("representation_nulls", ())),
         label_permutations=int(null_raw.get("label_permutations", 0)),
+        sequence_null_repeats=int(null_raw.get("sequence_null_repeats", 1)),
+        randomized_fano_repeats=int(null_raw.get("randomized_fano_repeats", 1)),
+        random_tensor_repeats=int(null_raw.get("random_tensor_repeats", 1)),
+        axis_permutation_repeats=int(null_raw.get("axis_permutation_repeats", 1)),
         random_seed=_optional_int(null_raw.get("random_seed")),
     )
     return BenchmarkConfig(
@@ -218,14 +241,57 @@ def validate_benchmark_config(config: BenchmarkConfig) -> None:
         raise ValueError("evaluation.inner_folds must be at least 2.")
     if config.evaluation.repeats < 1:
         raise ValueError("evaluation.repeats must be at least 1.")
+    if not 0.0 <= config.evaluation.sequence_similarity_threshold <= 1.0:
+        raise ValueError("evaluation.sequence_similarity_threshold must be between 0 and 1.")
     if config.feature_extraction.window_size <= 0:
         raise ValueError("feature_extraction.window_size must be > 0.")
     if config.feature_extraction.step <= 0:
         raise ValueError("feature_extraction.step must be > 0.")
     if config.feature_extraction.kmer_k <= 0:
         raise ValueError("feature_extraction.kmer_k must be > 0.")
+    if config.feature_extraction.epsilon <= 0:
+        raise ValueError("feature_extraction.epsilon must be > 0.")
+    if config.feature_extraction.rscu_stop_policy not in {"exclude", "separate", "pooled"}:
+        raise ValueError(
+            "feature_extraction.rscu_stop_policy must be exclude, separate, or pooled."
+        )
     if not config.features:
         raise ValueError("At least one feature set must be requested.")
+    for field_name in (
+        "randomized_fano_repeats",
+        "random_tensor_repeats",
+        "axis_permutation_repeats",
+        "sequence_null_repeats",
+    ):
+        if int(getattr(config.null_models, field_name)) < 1:
+            raise ValueError(f"null_models.{field_name} must be at least 1.")
+    allowed_sequence_nulls = {
+        "mononucleotide_shuffle",
+        "dinucleotide_preserving_shuffle",
+        "codon_order_shuffle",
+        "synonymous_codon_shuffle",
+    }
+    unknown_sequence_nulls = set(config.null_models.sequence_nulls) - allowed_sequence_nulls
+    if unknown_sequence_nulls:
+        raise ValueError(
+            "Unsupported sequence null model(s): "
+            + ", ".join(sorted(unknown_sequence_nulls))
+            + "."
+        )
+    allowed_representation_nulls = {
+        "remove_scalar_e0",
+        "imaginary_axis_permutation",
+        "random_antisymmetric_tensor",
+    }
+    unknown_representation_nulls = (
+        set(config.null_models.representation_nulls) - allowed_representation_nulls
+    )
+    if unknown_representation_nulls:
+        raise ValueError(
+            "Unsupported representation null model(s): "
+            + ", ".join(sorted(unknown_representation_nulls))
+            + "."
+        )
     if config.dataset.task != "clustering" and not config.dataset.target_column:
         raise ValueError("Supervised benchmark tasks require dataset.target_column.")
 

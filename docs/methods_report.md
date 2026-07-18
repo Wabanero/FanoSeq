@@ -29,9 +29,10 @@ The dataset registry is in `datasets/registry.yaml`.
 
 | dataset | source | primary holdout | current status |
 | --- | --- | --- | --- |
-| `coding-noncoding-v1` | GENCODE Human Release 50 | chromosome | source release selected |
+| `uci-splice-junction-v1` | UCI Splice-junction Gene Sequences | source gene | public preparation implemented; result not frozen |
+| `coding-noncoding-v1` | GENCODE Human Release 50 | chromosome | length/GC matching preparation implemented; curated source pending |
 | `taxonomy-v1` | SILVA SSU Ref NR 99 138.2 | species or genus | source release selected |
-| `mutation-effect-v1` | GENCODE protein-coding CDS FASTA | parent CDS | protocol defined |
+| `mutation-effect-v1` | GENCODE protein-coding CDS FASTA | parent CDS | perturbation generator implemented; source preparation pending |
 
 Prepared FASTA and metadata files are not vendored. Curators must run each
 study's `prepare.py`, record `fasta_sha256` and `metadata_sha256`, and keep the
@@ -64,7 +65,7 @@ FanoSeq families:
 
 - raw window components `e0...e7`;
 - adjacent octonion product components `p0...p7`;
-- commutator and transition summaries;
+- commutator summaries (`transition_score` is excluded as an exact alias);
 - associator summaries;
 - Fano-line attribution summaries;
 - combined sequence fingerprints.
@@ -89,10 +90,14 @@ Representation nulls:
 
 - scalar component removal;
 - imaginary-axis permutation;
-- sign flips;
-- random orthogonal transforms;
-- Fano-line relabeling;
 - random antisymmetric interaction tensors.
+
+These configured nulls are executed end to end: transformed inputs are written,
+features are rebuilt where required, the same folds and model protocol are used,
+and repeated controls are summarized in `benchmark_null_results`. Additional
+transform utilities (sign flips, orthogonal transforms, line relabeling) remain
+available for audit development but are not advertised as evaluated benchmark
+nulls until wired into the same execution path.
 
 Label nulls:
 
@@ -176,7 +181,16 @@ distribution without redesign. The report table should include at least:
 
 ## Runtime And Memory
 
-Each benchmark report should record:
+Each complete-analysis manifest records:
+
+- per-stage and total runtime;
+- traced peak Python memory;
+- input and output hashes;
+- table dimensions and dependency versions.
+
+These are engineering measurements, not biological evidence.
+
+The benchmark and complete-analysis outputs also expose:
 
 - number of sequences and total bases;
 - feature dimensionality by feature family;
@@ -202,4 +216,3 @@ FanoSeq is a feature-engineering framework. It does not show that DNA, proteins,
 or biological systems are intrinsically octonionic. The current DNA axes are
 hand-designed descriptors, the protein axes remain simplified, and all biological
 claims are pending public benchmark evidence.
-

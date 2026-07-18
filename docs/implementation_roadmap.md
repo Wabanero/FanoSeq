@@ -47,7 +47,8 @@ Next improvements:
 
 ## Phase 3: Reproducible Benchmark Harness
 
-Status: harness and visual summary implemented; public benchmark datasets pending.
+Status: fail-closed harness, executed nulls, and visual summary implemented;
+frozen public biological results pending.
 
 Implemented command:
 
@@ -62,6 +63,7 @@ Implemented outputs:
 - `benchmark_folds`
 - `benchmark_leakage_checks`
 - `benchmark_feature_sets`
+- `benchmark_feature_quality`
 - `benchmark_ablation_results`
 - `benchmark_null_results`
 - `benchmark_permutation_tests`
@@ -76,6 +78,7 @@ Registered study protocols:
 - `datasets/coding_noncoding`
 - `datasets/taxonomy`
 - `datasets/mutation_effect`
+- `datasets/splice_junction`
 
 Next improvements:
 
@@ -83,12 +86,12 @@ Next improvements:
 - Record input hashes in each dataset manifest.
 - Commit fold assignments or regenerate them deterministically from the
   benchmark manifests.
-- Add runtime and memory summaries to benchmark reports.
+- Add homology-cluster preparation with pinned external-tool provenance.
 - Add external validation manifests after the development dataset is frozen.
 
 ## Phase 3A: Integrated Analysis Workflow And Reporting
 
-Status: first complete workflow implemented.
+Status: resolved-plan complete workflow and rich manifest implemented.
 
 Implemented command:
 
@@ -96,9 +99,6 @@ Implemented command:
 fanoseq analyze \
   --input examples/benchmark_sequences.fasta \
   --benchmark-config examples/benchmark.yaml \
-  --seq-type dna \
-  --window-size 9 \
-  --step 3 \
   --output-dir results/complete_analysis
 ```
 
@@ -106,8 +106,8 @@ Implemented:
 
 - one command orchestrates sequence pipeline, leakage-controlled benchmark,
   and encoding audit
-- validation that the pipeline/audit FASTA matches `dataset.fasta` in the
-  benchmark manifest
+- one benchmark-derived extraction plan shared by pipeline, benchmark, and audit;
+  conflicting CLI values fail unless an explicit recorded override is enabled
 - organized `pipeline/`, `benchmark/`, and `audit/` subdirectories
 - promoted main plots, benchmark report, sequence fingerprints, and
   `analysis_manifest.json` in the output root
@@ -117,12 +117,12 @@ Implemented:
 - explicit axes, units, legends, numerical tolerances, identity references,
   and no-threshold annotations in audit plots
 - regression coverage for complete output organization and promoted reports
+- input/output hashes, Git/software/schema versions, dependency versions,
+  dimensions, timings, traced peak memory, warnings, and evidence status
 
 Next improvements:
 
 - Add a benchmark-config scaffolding command for labelled FASTA/metadata pairs.
-- Add runtime and peak-memory provenance to `analysis_manifest.json`.
-- Add input and output hashes to the promoted complete-analysis manifest.
 - Add compact and full audit profiles for exploratory versus publication runs.
 - Add a self-contained HTML report linking plots, tables, configuration, and
   scientific limitations.

@@ -106,6 +106,22 @@ def _leakage_text(leakage: pd.DataFrame) -> str:
         return "No leakage table was produced."
     group_leaks = int(leakage["group_leakage_detected"].sum())
     similarity_leaks = int(leakage["sequence_similarity_leakage_detected"].sum())
+    unsafe_fallbacks = int(
+        leakage.get("unsafe_split_fallback", pd.Series(dtype=bool)).astype(bool).sum()
+    )
+    if unsafe_fallbacks:
+        reasons = sorted(
+            reason
+            for reason in leakage.get(
+                "split_fallback_reason", pd.Series(dtype=str)
+            ).astype(str).unique()
+            if reason
+        )
+        return (
+            f"WARNING: {unsafe_fallbacks} split(s) used the explicitly enabled unsafe "
+            f"fallback. Reasons: {'; '.join(reasons)} Group-overlap detections: "
+            f"{group_leaks}; positional-identity detections: {similarity_leaks}."
+        )
     if group_leaks == 0 and similarity_leaks == 0:
         return "No group leakage or audited sequence-similarity leakage was detected."
     return (

@@ -55,7 +55,7 @@ def paired_comparison_table(
     random_seed: int,
     n_rounds: int,
 ) -> pd.DataFrame:
-    """Compare every feature set against the strongest conventional baseline."""
+    """Compare feature sets against the supplied preregistered comparator."""
     metric_rows = fold_metrics[
         (fold_metrics["level"] == "fold") & (fold_metrics["metric_name"] == primary_metric)
     ].copy()
@@ -67,6 +67,8 @@ def paired_comparison_table(
                 "primary_metric",
                 "best_conventional_feature_set",
                 "mean_difference",
+                "mean_difference_ci95_low",
+                "mean_difference_ci95_high",
                 "effect_size_dz",
                 "paired_permutation_p_value",
                 "p_value_bh",
@@ -98,6 +100,7 @@ def paired_comparison_table(
             std_diff = float(np.std(diffs, ddof=1)) if diffs.size > 1 else 0.0
             effect = mean_diff / std_diff if std_diff > 0 else 0.0
             p_value = _paired_sign_permutation_p_value(diffs, rng, n_rounds)
+            ci_low, ci_high = _paired_bootstrap_interval(diffs, rng, n_rounds)
             rows.append(
                 {
                     "feature_set": feature_set,
@@ -105,10 +108,13 @@ def paired_comparison_table(
                     "primary_metric": primary_metric,
                     "best_conventional_feature_set": baseline_name,
                     "mean_difference": mean_diff,
+                    "mean_difference_ci95_low": ci_low,
+                    "mean_difference_ci95_high": ci_high,
                     "effect_size_dz": effect,
                     "paired_permutation_p_value": p_value,
                     "p_value_bh": np.nan,
                     "n_pairs": int(diffs.size),
+                    "comparator_selection": "preregistered",
                     "fold_differences_json": json.dumps([float(value) for value in diffs]),
                 }
             )
@@ -179,6 +185,23 @@ def _paired_sign_permutation_p_value(
         statistic = abs(float(np.mean(diffs * signs)))
         hits += int(statistic >= observed)
     return float((hits + 1) / (n_rounds + 1))
+
+
+def _paired_bootstrap_interval(
+    diffs: np.ndarray,
+    rng: np.random.Generator,
+    n_rounds: int,
+) -> tuple[float, float]:
+    """Return a paired fold-block bootstrap interval for the mean difference."""
+    if diffs.size == 0 or n_rounds <= 0:
+        return np.nan, np.nan
+    means = np.asarray(
+        [
+            float(np.mean(rng.choice(diffs, size=diffs.size, replace=True)))
+            for _ in range(n_rounds)
+        ]
+    )
+    return float(np.quantile(means, 0.025)), float(np.quantile(means, 0.975))
 
 
 def _benjamini_hochberg(p_values: np.ndarray) -> np.ndarray:

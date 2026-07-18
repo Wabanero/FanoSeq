@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
 from sklearn.cluster import KMeans
 from sklearn.metrics import (
     adjusted_rand_score,
@@ -40,9 +41,12 @@ from fanoseq.benchmark.datasets import (
 )
 from fanoseq.benchmark.feature_sets import (
     FeatureBundle,
+    FeatureSet,
     build_feature_bundle,
+    feature_quality_table,
     feature_set_table,
     matrix_for_ids,
+    randomized_fano_control_feature_set,
     strongest_conventional_candidates,
 )
 from fanoseq.benchmark.models import (
@@ -51,7 +55,16 @@ from fanoseq.benchmark.models import (
     make_pipeline,
     scoring_name,
 )
-from fanoseq.benchmark.null_models import label_permutation, remove_scalar_component
+from fanoseq.benchmark.null_models import (
+    codon_order_shuffle,
+    dinucleotide_preserving_shuffle,
+    is_oriented_fano_automorphism,
+    label_permutation,
+    mononucleotide_shuffle,
+    random_antisymmetric_tensor,
+    remove_scalar_component,
+    synonymous_codon_shuffle,
+)
 from fanoseq.benchmark.reporting import write_markdown_report
 from fanoseq.benchmark.splits import (
     FoldSpec,
@@ -67,8 +80,10 @@ from fanoseq.benchmark.statistics import (
 )
 from fanoseq.plots import plot_benchmark_multipanel
 from fanoseq.io import write_outputs
+from fanoseq.fasta import FastaRecord
+from fanoseq.genetic_code import get_genetic_code
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "1.0.0"
 
 
 def run_benchmark(config_path: str | Path, output_dir: str | Path) -> dict[str, Path]:
@@ -112,7 +127,12 @@ def run_benchmark_config(config: BenchmarkConfig, output_dir: str | Path) -> dic
     aggregate_metrics = aggregate_metric_rows(fold_metrics)
     metrics = pd.concat([fold_metrics, aggregate_metrics], ignore_index=True)
 
-    conventional = strongest_conventional_candidates(feature_bundle.feature_sets)
+    conventional_candidates = strongest_conventional_candidates(feature_bundle.feature_sets)
+    conventional = (
+        {config.evaluation.primary_comparator}
+        if config.evaluation.primary_comparator in conventional_candidates
+        else set()
+    )
     comparisons = paired_comparison_table(
         fold_metrics,
         conventional_feature_sets=conventional,
@@ -145,6 +165,7 @@ def run_benchmark_config(config: BenchmarkConfig, output_dir: str | Path) -> dic
         "benchmark_metrics": metrics,
         "benchmark_predictions": predictions,
         "benchmark_feature_sets": feature_set_table(feature_bundle.feature_sets),
+        "benchmark_feature_quality": feature_quality_table(feature_bundle.feature_sets),
         "benchmark_ablation_results": ablations,
         "benchmark_null_results": null_results,
         "benchmark_permutation_tests": comparisons,
@@ -337,33 +358,25 @@ def _fit_nested_model(
 ) -> tuple[Any, dict[str, object]]:
     pipeline = make_pipeline(spec, feature_selection=config.evaluation.feature_selection)
     param_grid = adapt_param_grid(spec, n_train=len(x_train))
-    try:
-        inner_splits = make_inner_splits(
-            y_train,
-            groups_train,
-            task=task,
-            requested_folds=config.evaluation.inner_folds,
-            split_strategy=config.evaluation.split_strategy,
-            random_seed=config.evaluation.random_seed + 1000 + fold.repeat * 31 + fold.fold,
-        )
-        search = GridSearchCV(
-            pipeline,
-            param_grid=param_grid,
-            cv=inner_splits,
-            scoring=scoring_name(config.evaluation.primary_metric, task),
-            n_jobs=config.evaluation.n_jobs,
-            error_score=np.nan,
-        )
-        search.fit(x_train, y_train)
-        if hasattr(search, "best_estimator_"):
-            return search.best_estimator_, dict(search.best_params_)
-    except ValueError:
-        pass
-    fallback = clone(pipeline)
-    first_params = {key: values[0] for key, values in param_grid.items() if values}
-    fallback.set_params(**first_params)
-    fallback.fit(x_train, y_train)
-    return fallback, first_params
+    inner_splits = make_inner_splits(
+        y_train,
+        groups_train,
+        task=task,
+        requested_folds=config.evaluation.inner_folds,
+        split_strategy=config.evaluation.split_strategy,
+        random_seed=config.evaluation.random_seed + 1000 + fold.repeat * 31 + fold.fold,
+        allow_unsafe_split_fallback=config.evaluation.allow_unsafe_split_fallback,
+    )
+    search = GridSearchCV(
+        pipeline,
+        param_grid=param_grid,
+        cv=inner_splits,
+        scoring=scoring_name(config.evaluation.primary_metric, task),
+        n_jobs=config.evaluation.n_jobs,
+        error_score=np.nan,
+    )
+    search.fit(x_train, y_train)
+    return search.best_estimator_, dict(search.best_params_)
 
 
 def _evaluate_null_models(
@@ -381,7 +394,6 @@ def _evaluate_null_models(
     )
     if config.null_models.label_permutations > 0 and dataset.y is not None:
         primary_feature = next(iter(feature_bundle.feature_sets.values()))
-        permuted_dataset = _dataset_with_y(dataset, label_permutation(dataset.y, rng))
         limited_config = _config_with_models(config, limit_models=1)
         for permutation_index in range(config.null_models.label_permutations):
             permuted_dataset = _dataset_with_y(dataset, label_permutation(dataset.y, rng))
@@ -412,57 +424,316 @@ def _evaluate_null_models(
                     "metadata_json": "{}",
                 }
             )
-    for null_name in config.null_models.representation_nulls:
-        if null_name != "remove_scalar_e0":
-            rows.append(
-                {
-                    "run_id": run_id,
-                    "null_model": null_name,
-                    "null_iteration": 0,
-                    "feature_set": "NA",
-                    "metric_name": config.evaluation.primary_metric,
-                    "metric_value": np.nan,
-                    "metadata_json": json.dumps({"status": "available_as_transform"}),
-                }
+    if (
+        config.null_models.randomized_fano_repeats > 1
+        and "randomized_fano_structure" in config.features
+    ):
+        base_seed = (
+            config.null_models.random_seed
+            if config.null_models.random_seed is not None
+            else config.evaluation.random_seed + 7000
+        )
+        for iteration in range(config.null_models.randomized_fano_repeats):
+            seed = base_seed + iteration
+            feature_set = randomized_fano_control_feature_set(
+                feature_bundle.fano_tables,
+                random_seed=seed,
             )
-            continue
-        for feature_set in feature_bundle.feature_sets.values():
-            if not feature_set.name.startswith("fanoseq"):
-                continue
-            matrix = remove_scalar_component(feature_set.matrix)
-            rows.append(
-                {
-                    "run_id": run_id,
-                    "null_model": "remove_scalar_e0",
-                    "null_iteration": 0,
-                    "feature_set": feature_set.name,
-                    "metric_name": "n_features_after_transform",
-                    "metric_value": len(
-                        [column for column in matrix.columns if column != "sequence_id"]
-                    ),
-                    "metadata_json": "{}",
-                }
+            _evaluate_and_append_null_bundle(
+                rows,
+                run_id=run_id,
+                null_name="randomized_fano_structure",
+                iteration=iteration,
+                dataset=dataset,
+                feature_sets={feature_set.name: feature_set},
+                feature_bundle=feature_bundle,
+                folds=folds,
+                config=config,
+                metadata={"status": "evaluated", "random_seed": seed},
             )
+    if "remove_scalar_e0" in config.null_models.representation_nulls:
+        transformed = {
+            name: FeatureSet(
+                name=f"{name}__remove_scalar_e0",
+                family="representation_null",
+                description="FanoSeq representation with scalar e0-linked columns removed.",
+                matrix=remove_scalar_component(feature_set.matrix),
+                source_tables=feature_set.source_tables,
+            )
+            for name, feature_set in feature_bundle.feature_sets.items()
+            if name.startswith("fanoseq")
+            and len(remove_scalar_component(feature_set.matrix).columns) > 1
+        }
+        _evaluate_and_append_null_bundle(
+            rows,
+            run_id=run_id,
+            null_name="remove_scalar_e0",
+            iteration=0,
+            dataset=dataset,
+            feature_sets=transformed,
+            feature_bundle=feature_bundle,
+            folds=folds,
+            config=config,
+            metadata={"status": "evaluated", "transform_scope": "training inputs"},
+        )
+
+    if "imaginary_axis_permutation" in config.null_models.representation_nulls:
+        for iteration in range(config.null_models.axis_permutation_repeats):
+            permutation = tuple(int(value) for value in rng.permutation(np.arange(1, 8)))
+            transformed = {}
+            for name, feature_set in feature_bundle.feature_sets.items():
+                if not name.startswith("fanoseq"):
+                    continue
+                matrix, changed = _permute_axis_bearing_features(feature_set.matrix, permutation)
+                if changed:
+                    transformed[name] = FeatureSet(
+                        name=f"{name}__axis_permutation",
+                        family="representation_null",
+                        description="Imaginary-axis coordinate permutation control.",
+                        matrix=matrix,
+                        source_tables=feature_set.source_tables,
+                    )
+            _evaluate_and_append_null_bundle(
+                rows,
+                run_id=run_id,
+                null_name="imaginary_axis_permutation",
+                iteration=iteration,
+                dataset=dataset,
+                feature_sets=transformed,
+                feature_bundle=feature_bundle,
+                folds=folds,
+                config=config,
+                metadata={
+                    "status": "evaluated",
+                    "permutation": permutation,
+                    "is_oriented_fano_automorphism": is_oriented_fano_automorphism(permutation),
+                },
+            )
+
+    if "random_antisymmetric_tensor" in config.null_models.representation_nulls:
+        for iteration in range(config.null_models.random_tensor_repeats):
+            tensor = random_antisymmetric_tensor(rng)
+            feature_set = _random_tensor_feature_set(feature_bundle.fano_tables, tensor)
+            _evaluate_and_append_null_bundle(
+                rows,
+                run_id=run_id,
+                null_name="random_antisymmetric_tensor",
+                iteration=iteration,
+                dataset=dataset,
+                feature_sets={feature_set.name: feature_set},
+                feature_bundle=feature_bundle,
+                folds=folds,
+                config=config,
+                metadata={
+                    "status": "evaluated",
+                    "tensor_sha256": hashlib.sha256(tensor.tobytes()).hexdigest(),
+                },
+            )
+
     for null_name in config.null_models.sequence_nulls:
+        for iteration in range(config.null_models.sequence_null_repeats):
+            null_dataset, preservation = _sequence_null_dataset(
+                dataset,
+                null_name,
+                config,
+                rng,
+            )
+            null_dir = (
+                feature_bundle.cache_dir.parent
+                / "_null_models"
+                / f"{null_name}_{iteration:03d}"
+            )
+            null_fasta = null_dir / "sequences.fasta"
+            _write_fasta(null_dataset.records, null_fasta)
+            null_config = replace(
+                config,
+                dataset=replace(config.dataset, fasta=null_fasta),
+            )
+            null_bundle = build_feature_bundle(null_config, null_dataset, null_dir)
+            _evaluate_and_append_null_bundle(
+                rows,
+                run_id=run_id,
+                null_name=null_name,
+                iteration=iteration,
+                dataset=null_dataset,
+                feature_sets=null_bundle.feature_sets,
+                feature_bundle=null_bundle,
+                folds=folds,
+                config=config,
+                metadata={"status": "evaluated", **preservation},
+            )
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "run_id",
+            "null_model",
+            "null_iteration",
+            "feature_set",
+            "model",
+            "metric_name",
+            "metric_value",
+            "metric_std",
+            "n_folds",
+            "metadata_json",
+        ],
+    )
+
+
+def _evaluate_and_append_null_bundle(
+    rows: list[dict[str, object]],
+    *,
+    run_id: str,
+    null_name: str,
+    iteration: int,
+    dataset: BenchmarkDataset,
+    feature_sets: dict[str, FeatureSet],
+    feature_bundle: FeatureBundle,
+    folds: list[FoldSpec],
+    config: BenchmarkConfig,
+    metadata: dict[str, object],
+) -> None:
+    if not feature_sets:
+        raise ValueError(f"Null model {null_name!r} produced no evaluable feature sets.")
+    bundle = FeatureBundle(
+        feature_sets=feature_sets,
+        fano_tables=feature_bundle.fano_tables,
+        baseline_tables=feature_bundle.baseline_tables,
+        cache_dir=feature_bundle.cache_dir,
+    )
+    if dataset.task == "clustering":
+        fold_metrics, _ = _evaluate_clustering(run_id, dataset, bundle, folds, config)
+    else:
+        fold_metrics, _ = _evaluate_supervised(run_id, dataset, bundle, folds, config)
+    primary = fold_metrics[
+        fold_metrics["metric_name"] == config.evaluation.primary_metric
+    ]
+    for (feature_set, model), group in primary.groupby(["feature_set", "model"], sort=True):
+        values = pd.to_numeric(group["metric_value"], errors="coerce").to_numpy(dtype=float)
         rows.append(
             {
                 "run_id": run_id,
                 "null_model": null_name,
-                "null_iteration": 0,
-                "feature_set": "all_requested",
+                "null_iteration": iteration,
+                "feature_set": feature_set,
+                "model": model,
                 "metric_name": config.evaluation.primary_metric,
-                "metric_value": np.nan,
-                "metadata_json": json.dumps(
-                    {
-                        "status": (
-                            "sequence null generator implemented; rerun benchmark on generated "
-                            "FASTA to evaluate full predictive impact"
-                        )
-                    }
-                ),
+                "metric_value": float(np.mean(values)),
+                "metric_std": float(np.std(values)),
+                "n_folds": int(len(values)),
+                "metadata_json": json.dumps(metadata, sort_keys=True),
             }
         )
-    return pd.DataFrame(rows)
+
+
+def _sequence_null_dataset(
+    dataset: BenchmarkDataset,
+    null_name: str,
+    config: BenchmarkConfig,
+    rng: np.random.Generator,
+) -> tuple[BenchmarkDataset, dict[str, object]]:
+    frame = config.feature_extraction.frame
+    if null_name in {"codon_order_shuffle", "synonymous_codon_shuffle"} and frame == "all":
+        raise ValueError(
+            f"Sequence null {null_name!r} requires one explicit reading frame, not frame='all'."
+        )
+    genetic_code = get_genetic_code(config.feature_extraction.codon_table)
+    sequences: dict[str, str] = {}
+    for sequence_id in dataset.sequence_ids:
+        sequence = dataset.sequences[sequence_id]
+        if null_name == "mononucleotide_shuffle":
+            transformed = mononucleotide_shuffle(sequence, rng)
+        elif null_name == "dinucleotide_preserving_shuffle":
+            transformed = dinucleotide_preserving_shuffle(sequence, rng)
+        elif null_name == "codon_order_shuffle":
+            transformed = codon_order_shuffle(sequence, rng, frame=int(frame))
+        elif null_name == "synonymous_codon_shuffle":
+            transformed = synonymous_codon_shuffle(
+                sequence, genetic_code, rng, frame=int(frame)
+            )
+        else:
+            raise ValueError(f"Unsupported sequence null model: {null_name}.")
+        sequences[sequence_id] = transformed
+    records = tuple(
+        FastaRecord(id=record.id, description=record.description, sequence=sequences[record.id])
+        for record in dataset.records
+    )
+    null_dataset = replace(dataset, records=records, sequences=sequences)
+    metadata: dict[str, object] = {
+        "n_sequences": len(sequences),
+        "n_changed": sum(
+            sequences[sequence_id] != dataset.sequences[sequence_id]
+            for sequence_id in dataset.sequence_ids
+        ),
+        "lengths_preserved": all(
+            len(sequences[sequence_id]) == len(dataset.sequences[sequence_id])
+            for sequence_id in dataset.sequence_ids
+        ),
+        "labels_preserved": True,
+        "groups_preserved": True,
+        "frame": frame,
+    }
+    return null_dataset, metadata
+
+
+def _write_fasta(records: tuple[FastaRecord, ...], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for record in records:
+        lines.extend((f">{record.id}", record.sequence))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _permute_axis_bearing_features(
+    matrix: pd.DataFrame,
+    permutation: tuple[int, ...],
+) -> tuple[pd.DataFrame, bool]:
+    transformed = matrix.copy()
+    original = matrix.copy()
+    changed = False
+    for prefix in ("e", "p", "a"):
+        for target_axis, source_axis in enumerate(permutation, start=1):
+            pattern = re.compile(rf"(?<![A-Za-z0-9]){prefix}{target_axis}(?![0-9])")
+            for target_column in matrix.columns:
+                if not pattern.search(target_column):
+                    continue
+                source_column = pattern.sub(f"{prefix}{source_axis}", target_column)
+                if source_column in original.columns:
+                    transformed[target_column] = original[source_column].to_numpy()
+                    changed = True
+    return transformed, changed
+
+
+def _random_tensor_feature_set(
+    fano_tables: dict[str, pd.DataFrame],
+    tensor: np.ndarray,
+) -> FeatureSet:
+    source = fano_tables.get("window_octonions", pd.DataFrame())
+    rows: list[dict[str, object]] = []
+    if not source.empty:
+        component_columns = [f"e{axis}" for axis in range(1, 8)]
+        for sequence_id, group in source.groupby("sequence_id", sort=False):
+            ordered = group.sort_values("position")
+            values = ordered[component_columns].to_numpy(dtype=float)
+            interactions = (
+                np.einsum("ni,nj,ijk->nk", values[:-1], values[1:], tensor)
+                if len(values) > 1
+                else np.zeros((1, 7), dtype=float)
+            )
+            row: dict[str, object] = {"sequence_id": sequence_id}
+            for axis in range(7):
+                channel = interactions[:, axis]
+                row[f"random_tensor_e{axis + 1}_mean"] = float(np.mean(channel))
+                row[f"random_tensor_e{axis + 1}_std"] = float(np.std(channel))
+                row[f"random_tensor_e{axis + 1}_min"] = float(np.min(channel))
+                row[f"random_tensor_e{axis + 1}_max"] = float(np.max(channel))
+            rows.append(row)
+    return FeatureSet(
+        name="random_antisymmetric_tensor",
+        family="representation_null",
+        description="Random antisymmetric 7x7x7 tensor contracted with adjacent windows.",
+        matrix=pd.DataFrame(rows, columns=None),
+        source_tables=("window_octonions",),
+    )
 
 
 def _supervised_metrics(
@@ -615,7 +886,7 @@ def _score_payload(scores: np.ndarray | None, index: int) -> dict[str, object]:
         return {}
     value = scores[index]
     if np.isscalar(value):
-        return {"score": float(value)}
+        return {"score": float(np.asarray(value).item())}
     return {"scores": [float(item) for item in np.asarray(value).ravel()]}
 
 
@@ -673,9 +944,32 @@ def _write_manifest(
             "evaluation": config.evaluation.random_seed,
             "null_models": config.null_models.random_seed,
         },
+        "statistical_design": {
+            "primary_metric": config.evaluation.primary_metric,
+            "preregistered_primary_comparator": config.evaluation.primary_comparator,
+            "comparator_available": (
+                config.evaluation.primary_comparator
+                in strongest_conventional_candidates(feature_bundle.feature_sets)
+            ),
+            "note": (
+                "Paired inference uses the preregistered comparator only; full baseline "
+                "rankings are descriptive and are not used to select the inferential control."
+            ),
+        },
         "split_assignments": {
             "table": output_paths.get("benchmark_folds"),
             "n_rows": int(len(folds)),
+            "unsafe_fallback_enabled": config.evaluation.allow_unsafe_split_fallback,
+            "unsafe_fallback_used": bool(
+                folds.get("unsafe_split_fallback", pd.Series(dtype=bool)).astype(bool).any()
+            ),
+            "fallback_reasons": sorted(
+                reason
+                for reason in folds.get(
+                    "split_fallback_reason", pd.Series(dtype=str)
+                ).astype(str).unique()
+                if reason
+            ),
         },
         "feature_definitions": feature_set_table(feature_bundle.feature_sets).to_dict("records"),
         "dataset_composition": dataset_composition(dataset),

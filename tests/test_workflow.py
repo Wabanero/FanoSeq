@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fanoseq.workflow import CompleteAnalysisConfig, run_complete_analysis
@@ -27,3 +28,11 @@ def test_complete_analysis_organizes_subdirectories_and_main_files(tmp_path: Pat
     assert outputs["benchmark_plot"].stat().st_size > 0
     assert outputs["audit_plot"].stat().st_size > 0
     assert outputs["sequence_fingerprints"].exists()
+    manifest = json.loads(outputs["manifest"].read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "1.0.0"
+    assert manifest["resolved_analysis_plan"]["feature_extraction"]["window_size"] == 9
+    assert len(manifest["input_hashes"]["fasta_sha256"]) == 64
+    assert manifest["runtime_seconds"]["benchmark"] > 0
+    assert manifest["table_dimensions"]["pipeline"]
+    assert manifest["outputs"]
+    assert manifest["biological_evidence_status"].startswith("not_established")

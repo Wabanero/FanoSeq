@@ -61,6 +61,13 @@ Any application-facing result should include:
    Fano-line attribution, and with shuffled labels where appropriate.
 5. Runtime and memory reporting for large-sequence workflows.
 
+Context-aware claims additionally require explicit genome coordinates, assembly,
+feature type, assay/sample metadata, synchronized-track provenance, and holdout
+groups for chromosome, donor, tissue/cell type, or source study as appropriate.
+See `biological_context.md`. Higher-order dependence claims must report the
+estimator, discretization, null distribution, multiplicity correction, and
+external validation; see `information_theory.md`.
+
 Negative results are scientifically useful and should be kept. If octonion
 features do not improve a task, that result still clarifies where the
 representation is or is not helpful.

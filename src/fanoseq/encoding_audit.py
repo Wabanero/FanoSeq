@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from itertools import combinations, permutations, product
 from math import sqrt
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Iterable, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -78,6 +78,7 @@ class EncodingAuditConfig:
     seq_type: Literal["dna", "protein"]
     axis_scheme_id: str
     checks: tuple[str, ...]
+    codon_axis_scheme_id: str = "codon-product-v1"
     window_size: int = 10
     step: int = 1
     kmer_k: int = 2
@@ -142,7 +143,7 @@ def build_encoding_audit_tables(config: EncodingAuditConfig) -> dict[str, pd.Dat
     if "codon" in checks or "collision" in checks:
         codon_tables = build_codon_audit_tables(
             genetic_code,
-            axis_scheme_id="codon-product-v1",
+            axis_scheme_id=config.codon_axis_scheme_id,
             normalize=config.normalize_codons,
             tolerance=config.tolerance,
         )
@@ -411,7 +412,8 @@ def build_feature_redundancy_tables(
             random_seed=config.random_seed,
         )
         rows.append(stats)
-        for rank_index, singular_value in enumerate(stats.pop("_singular_values")):
+        singular_values = cast(Iterable[float], stats.pop("_singular_values"))
+        for rank_index, singular_value in enumerate(singular_values):
             spectrum_rows.append(
                 {
                     "feature_family": family,
@@ -508,7 +510,7 @@ def build_mutation_sensitivity(
                 "original_symbol": perturbation.get("original_symbol", "NA"),
                 "replacement_symbol": perturbation.get("replacement_symbol", "NA"),
                 "position_fraction": _position_fraction(
-                    int(perturbation.get("position", -1)),
+                    int(str(perturbation.get("position", -1))),
                     len("".join(record.sequence.split())),
                 ),
                 "raw_component_delta_norm": float(
@@ -824,8 +826,13 @@ def build_axis_control_tables(
             {
                 "control_id": control["control_id"],
                 "transformation_category": control["transformation_category"],
-                "permutation": ",".join(str(axis) for axis in control["permutation"]),
-                "signs": ",".join(str(int(sign)) for sign in control["signs"]),
+                "permutation": ",".join(
+                    str(axis) for axis in cast(Iterable[object], control["permutation"])
+                ),
+                "signs": ",".join(
+                    str(int(str(sign)))
+                    for sign in cast(Iterable[object], control["signs"])
+                ),
                 "changes_biological_labels": control["changes_biological_labels"],
                 "changes_coordinates": control["changes_coordinates"],
                 "changes_multiplication_table": control["changes_multiplication_table"],
@@ -916,9 +923,11 @@ def _with_run_metadata(
     genetic_code: GeneticCode,
     input_hash: str,
 ) -> pd.DataFrame:
+    from fanoseq import __version__
+
     result = table.copy()
     metadata = [
-        ("software_version", "0.1.0"),
+        ("software_version", __version__),
         ("schema_version", SCHEMA_VERSION),
         ("scheme_id", config.axis_scheme_id),
         ("fano_convention_id", FANO_CONVENTION_ID),
@@ -1635,16 +1644,16 @@ def _axis_controls(config: EncodingAuditConfig) -> list[dict[str, object]]:
     if config.permutation_samples <= 0:
         return controls
     for index in range(config.permutation_samples):
-        perm = [0, *rng.permutation(np.arange(1, 8)).tolist()]
+        random_perm = [0, *rng.permutation(np.arange(1, 8)).tolist()]
         signs = [1, *rng.choice(np.array([-1, 1]), size=7).astype(int).tolist()]
         category = "coordinate_permutation_not_automorphism"
-        if _is_fano_automorphism(tuple(perm[1:])):
+        if _is_fano_automorphism(tuple(random_perm[1:])):
             category = "fano_plane_automorphism"
         controls.append(
             _control_row(
                 f"random_permutation_{index}",
                 category,
-                tuple(int(axis) for axis in perm),
+                tuple(int(axis) for axis in random_perm),
                 tuple(int(sign) for sign in signs),
                 changes_labels=True,
                 changes_coordinates=True,
@@ -1763,8 +1772,13 @@ def _apply_axis_control(
         "canonical",
     }:
         return values.copy()
-    perm = tuple(int(axis) for axis in control["permutation"])
-    signs = np.array([int(sign) for sign in control["signs"]], dtype=float)
+    perm = tuple(
+        int(str(axis)) for axis in cast(Iterable[object], control["permutation"])
+    )
+    signs = np.array(
+        [int(str(sign)) for sign in cast(Iterable[object], control["signs"])],
+        dtype=float,
+    )
     transformed = values[:, perm].copy()
     transformed *= signs
     return transformed
@@ -2740,7 +2754,7 @@ def _audit_tolerance(table: pd.DataFrame) -> float:
     return float(values.iloc[0]) if not values.empty else 1e-9
 
 
-def _font(size: int) -> ImageFont.ImageFont:
+def _font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype("arial.ttf", size)
     except OSError:

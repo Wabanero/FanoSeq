@@ -255,7 +255,7 @@ def build_fano_line_features(interactions: pd.DataFrame) -> pd.DataFrame:
         axis_shares = _axis_incident_shares(shares)
         for axis in range(1, 8):
             row[f"axis_e{axis}_incident_share"] = axis_shares[axis]
-        dominant_axis = max(axis_shares, key=axis_shares.get)
+        dominant_axis = max(axis_shares, key=lambda axis: axis_shares[axis])
         row["dominant_axis"] = int(dominant_axis)
         row["dominant_axis_incident_share"] = float(axis_shares[dominant_axis])
         rows.append(row)
@@ -352,7 +352,7 @@ def plot_fano_plane(
     for line in plane.lines:
         color = colors[line.index % len(colors)]
         path = line_paths[line.axes]
-        if path == "circle":
+        if isinstance(path, str):
             _draw_inner_circle(draw, coords, color, width=max(4, size // 150))
         else:
             points = [coords[axis] for axis in path]
@@ -403,7 +403,7 @@ def _line_metadata(
 
 
 def _axis_line_membership() -> dict[int, list[str]]:
-    membership = {axis: [] for axis in range(1, 8)}
+    membership: dict[int, list[str]] = {axis: [] for axis in range(1, 8)}
     for line in FANO_LINES:
         key = line_key(line)
         for axis in line:
@@ -537,7 +537,12 @@ def _empty_feature_table() -> pd.DataFrame:
     return pd.DataFrame(columns=columns)
 
 
-def _plot_fonts(size: int) -> dict[str, ImageFont.ImageFont]:
+def _plot_fonts(
+    size: int,
+) -> dict[str, ImageFont.ImageFont | ImageFont.FreeTypeFont]:
+    title: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    point: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    small: ImageFont.ImageFont | ImageFont.FreeTypeFont
     try:
         title = ImageFont.truetype("arial.ttf", max(24, size // 34))
         point = ImageFont.truetype("arial.ttf", max(14, size // 70))
@@ -614,7 +619,7 @@ def _draw_line_label(
     coords: dict[int, tuple[int, int]],
     line: FanoLine,
     color: tuple[int, int, int],
-    font: ImageFont.ImageFont,
+    font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
 ) -> None:
     xs = [coords[axis][0] for axis in line.axes]
     ys = [coords[axis][1] for axis in line.axes]
@@ -627,7 +632,7 @@ def _draw_point_label(
     draw: ImageDraw.ImageDraw,
     point: tuple[int, int],
     label: str,
-    font: ImageFont.ImageFont,
+    font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
     size: int,
 ) -> None:
     x, y = point

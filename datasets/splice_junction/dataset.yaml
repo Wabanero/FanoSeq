@@ -1,0 +1,47 @@
+dataset_id: uci-splice-junction-v1
+title: Primate splice-junction gene sequences
+status: public_source_and_preparation_implemented
+benchmark: smoke_test_real_data
+purpose: >
+  Test FanoSeq on a compact public labelled DNA dataset while comparing donor,
+  acceptor, and non-junction sequence classification against conventional
+  sequence baselines under source-gene-grouped cross-validation.
+source:
+  name: UCI Molecular Biology (Splice-junction Gene Sequences)
+  accession: UCI dataset 69
+  version: "1991-12-31"
+  url: https://archive.ics.uci.edu/static/public/69/molecular%2Bbiology%2Bsplice%2Bjunction%2Bgene%2Bsequences.zip
+  doi: 10.24432/C5M888
+  license: CC BY 4.0
+  archive_sha256: 3e7ce5dcbeec8c221f57dda495611b9d6ec9525551f445419f5c74cc38067e4e
+inputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  hashes: prepared/input_hashes.tsv
+  fasta_sha256: cf0eeb40743bdd7796b9036242387921eb29bd28e0fd2ec8879018df81febb85
+  metadata_sha256: e24557a79fbc59e96c7c55a4427f98cf80053147fe7959514c2c2387a6f1e9ae
+preprocessing:
+  sequence_length: 60
+  ambiguity_policy: remove sequences containing non-ACGT symbols
+  duplicate_policy: retain one record per exact sequence
+  class_sampling: deterministic balanced sample of 200 records per class
+  class_mapping:
+    EI: exon_intron_donor
+    IE: intron_exon_acceptor
+    N: neither
+split:
+  strategy: stratified_group
+  group_column: source_gene
+  seed: 42
+limitations:
+  - Historical primate dataset donated in 1991.
+  - Short fixed-length windows centered on candidate splice junctions.
+  - Suitable for workflow validation, not a modern external-validation claim.
+  - Near-homologous sequences may remain after exact deduplication and must be
+    monitored by the benchmark sequence-similarity audit.
+prepared_outputs:
+  fasta: prepared/sequences.fasta
+  metadata: prepared/metadata.tsv
+  splits: splits.tsv
+  provenance: prepared/provenance.json
+  hashes: prepared/input_hashes.tsv

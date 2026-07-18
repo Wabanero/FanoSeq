@@ -1,6 +1,6 @@
 dataset_id: mutation-effect-v1
 title: Controlled coding-sequence perturbation sensitivity
-status: protocol_defined
+status: preparation_implemented_requires_curated_source
 benchmark: C
 purpose: >
   Construct controlled coding-sequence perturbations and test whether FanoSeq
@@ -10,6 +10,7 @@ source:
   name: GENCODE Human Release 50 protein-coding transcript sequences
   accession: GRCh38.p14 protein-coding transcript FASTA
   version: "50"
+  url: https://www.gencodegenes.org/human/
   citation: >
     Mudge JM et al. GENCODE 2025: reference gene annotation for human and mouse.
     Nucleic Acids Research 53(D1):D966-D975, 2025.
@@ -29,6 +30,8 @@ preprocessing:
   coding_sequence_policy: require_in_frame_acgt_cds
   generated_perturbations:
     - synonymous_substitution
+    - synonymous_recoding
+    - codon_order_shuffle
     - transition
     - transversion
     - conservative_amino_acid_change

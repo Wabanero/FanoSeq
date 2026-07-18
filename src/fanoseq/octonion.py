@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -64,23 +64,23 @@ class Octonion:
         object.__setattr__(self, "components", values)
 
     def __add__(self, other: Self) -> Self:
-        return Octonion(self.components + other.components)
+        return cast(Self, Octonion(self.components + other.components))
 
     def __sub__(self, other: Self) -> Self:
-        return Octonion(self.components - other.components)
+        return cast(Self, Octonion(self.components - other.components))
 
     def __mul__(self, other: Self | float) -> Self:
         if isinstance(other, Octonion):
-            return Octonion(multiply_components(self.components, other.components))
-        return Octonion(self.components * float(other))
+            return cast(Self, Octonion(multiply_components(self.components, other.components)))
+        return cast(Self, Octonion(self.components * float(other)))
 
     def __rmul__(self, other: float) -> Self:
-        return Octonion(float(other) * self.components)
+        return cast(Self, Octonion(float(other) * self.components))
 
     def __truediv__(self, scalar: float) -> Self:
         if scalar == 0:
             raise ZeroDivisionError("Cannot divide an octonion by zero.")
-        return Octonion(self.components / scalar)
+        return cast(Self, Octonion(self.components / scalar))
 
     def add(self, other: Self) -> Self:
         """Return self + other."""
@@ -98,7 +98,7 @@ class Octonion:
         """Return the octonion conjugate."""
         values = self.components.copy()
         values[1:] *= -1.0
-        return Octonion(values)
+        return cast(Self, Octonion(values))
 
     def norm(self) -> float:
         """Return the Euclidean norm of the component vector."""
