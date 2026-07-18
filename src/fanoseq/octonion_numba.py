@@ -2,25 +2,31 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy.typing import NDArray
 
 try:  # pragma: no cover - behavior is exercised through the public functions.
-    from numba import njit
+    import numba as _numba
 except Exception:  # pragma: no cover
-
-    def njit(*args: object, **kwargs: object) -> object:
-        """Fallback decorator used when Numba is not installed."""
-
-        def decorator(func: object) -> object:
-            return func
-
-        if args and callable(args[0]) and not kwargs:
-            return args[0]
-        return decorator
+    _numba = None
 
 
-@njit(cache=True)
+def _optional_njit(*args: object, **kwargs: object) -> Any:
+    """Use Numba's decorator when available, otherwise return the function unchanged."""
+    if _numba is not None:
+        return _numba.njit(*args, **kwargs)
+
+    def decorator(func: object) -> object:
+        return func
+
+    if args and callable(args[0]) and not kwargs:
+        return args[0]
+    return decorator
+
+
+@_optional_njit(cache=True)
 def _basis_product(left: int, right: int) -> tuple[int, int]:
     if left == right:
         return -1, 0
@@ -53,7 +59,7 @@ def _basis_product(left: int, right: int) -> tuple[int, int]:
     return 0, 0
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def octonion_multiply(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
     """Multiply two length-8 octonion component arrays."""
     out = np.zeros(8, dtype=np.float64)
@@ -70,13 +76,13 @@ def octonion_multiply(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray
     return out
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def octonion_commutator(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return x*y - y*x."""
     return octonion_multiply(x, y) - octonion_multiply(y, x)
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def octonion_associator(
     x: NDArray[np.float64], y: NDArray[np.float64], z: NDArray[np.float64]
 ) -> NDArray[np.float64]:
@@ -86,7 +92,7 @@ def octonion_associator(
     )
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def batch_adjacent_products(values: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return products for consecutive rows in a component matrix."""
     n = values.shape[0]
@@ -96,7 +102,7 @@ def batch_adjacent_products(values: NDArray[np.float64]) -> NDArray[np.float64]:
     return out
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def batch_adjacent_commutator_scores(values: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return commutator norms for consecutive rows in a component matrix."""
     n = values.shape[0]
@@ -110,7 +116,7 @@ def batch_adjacent_commutator_scores(values: NDArray[np.float64]) -> NDArray[np.
     return out
 
 
-@njit(cache=True)
+@_optional_njit(cache=True)
 def batch_triplet_associator_scores(values: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return associator norms for consecutive triplets in a component matrix."""
     n = values.shape[0]
